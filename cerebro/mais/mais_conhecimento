@@ -1,4 +1,3 @@
-
 [
   {
     "palavras_chave": ["o que e islam", "islão", "islã", "islam"],
@@ -6,22 +5,22 @@
     "fonte": "Islam Moçambique",
     "categoria": "definição",
     "nivel": "iniciante",
-    "links": ["https://Facebook.com/Islamguia"],
+    "links": ["https://Facebook.com/Islamguia"]
   },
   {
     "palavras_chave": ["q.muculmano", "muçulmano", "momentano"],
-    "resposta": "🔰 *QUEM É O MUÇULMANO?*\n  \nO muçulmano é quem se submete a vontade de Deus que em árabe é chamado de Allah.\n  \nSaiba mais, escreve s.allah",
+    "resposta": "🔰 *QUEM É O MUÇULMANO?*\n  \nO muçulmano é quem se submete à vontade de Deus que em árabe é chamado de Allah.\n  \nSaiba mais, escreve s.allah",
     "fonte": "Islam Moçambique",
     "categoria": "definição",
     "nivel": "iniciante",
-    "links: ["https://Facebook.com/islamguia"],
+    "links": ["https://Facebook.com/islamguia"]
   },
   {
-   "palavras_chave": ["s.allah", "deus", "alá"], 
-   "resposta": "🟢 *QUEM É ALLAH?*\n  \nAllah é um nome árabe, que significa Deus. Allah não é o Deus dos muçulmanos, como muitos pensam, Allah é Deus todo poderoso, o mesmo que trouxe os vários profetas conhecidos como:\n  \n Abraão (Ibrahim), Moisés (mussa), Jesus (isa), Muhammad, que a paz e benção estejam com todos os Profetas de Allah. saiba mais escreve s.profetas",
-   "fonte": "Islam Moçambique",
-   "categoria": "definição",
-   "nivel": "iniciante",
-   "links": ["https://Facebook.com/islamguia"],
+    "palavras_chave": ["s.allah", "deus", "alá"], 
+    "resposta": "🟢 *QUEM É ALLAH?*\n  \nAllah é um nome árabe, que significa Deus. Allah não é o Deus dos muçulmanos, como muitos pensam, Allah é Deus todo poderoso, o mesmo que trouxe os vários profetas conhecidos como:\n  \n Abraão (Ibrahim), Moisés (mussa), Jesus (isa), Muhammad, que a paz e benção estejam com todos os Profetas de Allah. saiba mais escreve s.profetas",
+    "fonte": "Islam Moçambique",
+    "categoria": "definição",
+    "nivel": "iniciante",
+    "links": ["https://Facebook.com/islamguia"]
   }
 ]
