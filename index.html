@@ -1,178 +1,232 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Livraria Online</title>
-<meta name="description" content="Livros PDF e produtos físicos">
-<style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif}
-body{background:#f5f7fa;color:#333}
-header{background:linear-gradient(135deg,#1a365d,#2c5282);color:#fff;padding:16px 0;position:sticky;top:0;z-index:100}
-.container{max-width:1200px;margin:0 auto;padding:0 16px}
-.header-flex{display:flex;justify-content:space-between;align-items:center}
-.logo{font-size:1.5rem;font-weight:700}
-.logo span{font-size:1.3rem}
-.nav-links{display:flex;gap:20px;align-items:center}
-.nav-links a{color:#fff;text-decoration:none;font-size:.9rem;opacity:.9}
-.nav-links a:hover{opacity:1}
-.btn-nav{background:#d69e2e;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-weight:600;font-size:.85rem}
-.btn-nav:hover{background:#b7791f}
-.hero{background:linear-gradient(135deg,#1a365d,#2d3748);color:#fff;padding:60px 16px;text-align:center}
-.hero h1{font-size:2.2rem;margin-bottom:12px}
-.hero p{font-size:1.1rem;opacity:.8;margin-bottom:24px}
-.btn-hero{background:#d69e2e;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block}
-.filters{background:#fff;padding:20px 0;margin-bottom:30px;box-shadow:0 2px 4px rgba(0,0,0,.1)}
-.filter-flex{display:flex;gap:12px;flex-wrap:wrap}
-.filter-flex input,.filter-flex select{flex:1;min-width:200px;padding:12px 16px;border:2px solid #e2e8f0;border-radius:8px;font-size:1rem}
-.filter-flex input:focus,.filter-flex select:focus{outline:none;border-color:#2c5282}
-.products-section{padding:20px 0 60px}
-.section-title{font-size:1.8rem;color:#1a365d;margin-bottom:24px;text-align:center}
-.products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px}
-.product-card{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .3s,box-shadow .3s}
-.product-card:hover{transform:translateY(-5px);box-shadow:0 8px 25px rgba(0,0,0,.15)}
-.product-img{width:100%;height:200px;object-fit:cover}
-.product-body{padding:20px}
-.product-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:700;margin-bottom:10px}
-.badge-pdf{background:#ebf8ff;color:#2b6cb0}
-.badge-fisico{background:#f0fff4;color:#276749}
-.badge-destaque{background:#d69e2e;color:#fff;position:absolute;top:12px;right:12px}
-.product-name{font-size:1.15rem;font-weight:700;margin-bottom:8px;color:#1a365d}
-.product-desc{font-size:.9rem;color:#666;margin-bottom:16px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.product-footer{display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:1px solid #eee}
-.product-price{font-size:1.3rem;font-weight:800;color:#1a365d}
-.price-old{text-decoration:line-through;color:#999;font-size:.9rem;margin-right:6px;font-weight:500}
-.btn-buy{padding:10px 20px;border-radius:8px;color:#fff;text-decoration:none;font-weight:700;font-size:.9rem;display:inline-flex;align-items:center;gap:6px;border:none;cursor:pointer}
-.btn-buy-pdf{background:#1a365d}
-.btn-buy-pdf:hover{background:#2c5282}
-.btn-buy-fisico{background:#25d366}
-.btn-buy-fisico:hover{background:#128c7e}
-.img-wrap{position:relative}
-footer{background:#1a365d;color:#fff;padding:40px 16px;text-align:center;margin-top:40px}
-footer p{opacity:.7;font-size:.9rem}
-.empty{text-align:center;padding:60px 20px;color:#666}
-.empty h3{font-size:1.3rem;margin-bottom:8px}
-@media(max-width:600px){.hero h1{font-size:1.6rem}.filter-flex{flex-direction:column}.filter-flex input,.filter-flex select{width:100%}.nav-links{gap:12px}.nav-links a{font-size:.8rem}}
-</style>
-<base target="_blank">
+  <meta charset="UTF-8">
+  <title>Minha App - Firebase Like API</title>
+  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui; }
+    body { background: #0f0f23; color: #fff; padding: 20px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { color: #00d4aa; margin-bottom: 20px; }
+    .card { background: #1a1a2e; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    input, button { padding: 10px 15px; border-radius: 8px; border: none; margin: 5px; }
+    input { background: #16213e; color: #fff; width: 200px; }
+    button { background: #00d4aa; color: #0f0f23; cursor: pointer; font-weight: bold; }
+    button:hover { background: #00b894; }
+    .tarefa { background: #16213e; padding: 15px; border-radius: 8px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+    .tarefa.concluida { opacity: 0.5; text-decoration: line-through; }
+    .badge { background: #e74c3c; padding: 4px 10px; border-radius: 20px; font-size: 12px; }
+    .badge.alta { background: #e74c3c; }
+    .badge.media { background: #f39c12; }
+    .badge.baixa { background: #27ae60; }
+    #status { position: fixed; top: 20px; right: 20px; padding: 10px 20px; border-radius: 20px; font-size: 14px; }
+    #status.online { background: #27ae60; }
+    #status.offline { background: #e74c3c; }
+    .hidden { display: none; }
+  </style>
 </head>
 <body>
+  <div id="status" class="offline">● Offline</div>
+  
+  <div class="container">
+    <h1>🔥 Firebase-Like API Demo</h1>
 
-<header>
-<div class="container">
-<div class="header-flex">
-<div class="logo"><span>📚</span> Livraria Online</div>
-<nav class="nav-links">
-<a href="index.html">Início</a>
-<a href="desbloquear.html">🔓 Desbloquear</a>
-<a href="admin.html" class="btn-nav">⚙️ Admin</a>
-</nav>
-</div>
-</div>
-</header>
+    <!-- LOGIN -->
+    <div id="loginSection" class="card">
+      <h3>🔐 Login</h3>
+      <input type="email" id="email" placeholder="Email" value="joao@email.com">
+      <input type="password" id="password" placeholder="Senha" value="123456">
+      <button onclick="fazerLogin()">Entrar</button>
+      <button onclick="criarConta()">Criar Conta</button>
+    </div>
 
-<section class="hero">
-<div class="container">
-<h1>📖 Descubra Seu Próximo Livro</h1>
-<p>Livros digitais em PDF e produtos físicos selecionados para você.</p>
-<a href="#produtos" class="btn-hero">Ver Produtos</a>
-</div>
-</section>
+    <!-- APP -->
+    <div id="appSection" class="card hidden">
+      <h3>👤 <span id="userName"></span></h3>
+      <button onclick="sair()">Sair</button>
+      
+      <h3 style="margin-top: 20px;">📝 Nova Tarefa</h3>
+      <input type="text" id="novaTarefa" placeholder="Título da tarefa">
+      <select id="prioridade">
+        <option value="alta">Alta</option>
+        <option value="media" selected>Média</option>
+        <option value="baixa">Baixa</option>
+      </select>
+      <button onclick="adicionarTarefa()">Adicionar</button>
+      
+      <h3 style="margin-top: 20px;">📋 Minhas Tarefas</h3>
+      <div id="listaTarefas"></div>
+    </div>
+  </div>
 
-<section class="filters">
-<div class="container">
-<div class="filter-flex">
-<input type="text" id="busca" placeholder="🔍 Buscar produtos...">
-<select id="filtroCategoria">
-<option value="">Todas Categorias</option>
-</select>
-<select id="filtroTipo">
-<option value="">Todos</option>
-<option value="PDF">📄 PDF</option>
-<option value="FISICO">📦 Físico</option>
-</select>
-</div>
-</div>
-</section>
+  <script>
+    const API_URL = 'http://localhost:3000';
+    let token = localStorage.getItem('token');
+    let socket = null;
+    let tarefas = [];
 
-<section class="products-section" id="produtos">
-<div class="container">
-<h2 class="section-title">Nossos Produtos</h2>
-<div class="products-grid" id="grid">
-<div class="empty"><p>Carregando...</p></div>
-</div>
-</div>
-</section>
+    // Verificar se já está logado
+    if (token) {
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('appSection').classList.remove('hidden');
+      carregarUsuario();
+      conectarRealtime();
+      carregarTarefas();
+    }
 
-<footer>
-<div class="container">
-<p>© Livraria Online. Todos os direitos reservados.</p>
-<p style="margin-top:8px"><a href="desbloquear.html" style="color:#d69e2e;text-decoration:none">Desbloquear Livro</a> | <a href="admin.html" style="color:#d69e2e;text-decoration:none">Área Admin</a></p>
-</div>
-</footer>
+    async function fazerLogin() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await res.json();
+      if (data.token) {
+        token = data.token;
+        localStorage.setItem('token', token);
+        document.getElementById('loginSection').classList.add('hidden');
+        document.getElementById('appSection').classList.remove('hidden');
+        document.getElementById('userName').textContent = data.user.displayName || data.user.email;
+        conectarRealtime();
+        carregarTarefas();
+      } else {
+        alert(data.message || 'Erro no login');
+      }
+    }
 
-<script src="dados.js"></script>
-<script>
-// Preencher categorias
-const cats = [...new Set(PRODUTOS.map(p=>p.categoria))];
-const selCat = document.getElementById('filtroCategoria');
-cats.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;selCat.appendChild(o)});
+    async function criarConta() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      
+      const res = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName: email.split('@')[0] })
+      });
+      
+      const data = await res.json();
+      if (data.token) {
+        token = data.token;
+        localStorage.setItem('token', token);
+        fazerLogin();
+      } else {
+        alert(data.message || 'Erro no registro');
+      }
+    }
 
-function formatar(v){return 'R$ '+v.toFixed(2).replace('.',',')}
+    async function carregarUsuario() {
+      const res = await fetch(`${API_URL}/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.user) {
+        document.getElementById('userName').textContent = data.user.displayName || data.user.email;
+      }
+    }
 
-function render(produtos){
-const g=document.getElementById('grid');
-if(produtos.length===0){g.innerHTML='<div class="empty" style="grid-column:1/-1"><h3>😕 Nenhum produto</h3><p>Tente outra busca.</p></div>';return}
-g.innerHTML=produtos.map(p=>{
-const isPdf=p.tipo==='PDF';
-const temPromo=p.precoPromo&&p.precoPromo<p.preco;
-const msg=encodeURIComponent('Olá.
+    async function adicionarTarefa() {
+      const titulo = document.getElementById('novaTarefa').value;
+      const prioridade = document.getElementById('prioridade').value;
+      
+      if (!titulo) return;
+      
+      await fetch(`${API_URL}/db/tarefas`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ titulo, prioridade, concluida: false })
+      });
+      
+      document.getElementById('novaTarefa').value = '';
+      carregarTarefas();
+    }
 
-Desejo comprar o seguinte produto:
+    async function carregarTarefas() {
+      const res = await fetch(`${API_URL}/db/tarefas?orderBy=prioridade`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      tarefas = data.documents || [];
+      renderizarTarefas();
+    }
 
-Referência: '+p.id+'
-Produto: '+p.nome+'
-Preço: '+(temPromo?formatar(p.precoPromo):formatar(p.preco))+'
+    function renderizarTarefas() {
+      const container = document.getElementById('listaTarefas');
+      container.innerHTML = '';
+      
+      tarefas.forEach(t => {
+        const div = document.createElement('div');
+        div.className = `tarefa ${t.data.concluida ? 'concluida' : ''}`;
+        div.innerHTML = `
+          <div>
+            <strong>${t.data.titulo}</strong>
+            <span class="badge ${t.data.prioridade}">${t.data.prioridade}</span>
+          </div>
+          <div>
+            <button onclick="toggleTarefa('${t.id}', ${!t.data.concluida})">
+              ${t.data.concluida ? '↩️' : '✅'}
+            </button>
+            <button onclick="deletarTarefa('${t.id}')" style="background:#e74c3c">🗑️</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
 
-Aguardo instruções para pagamento.');
-const url='https://wa.me/'+CONFIG.whatsappPadrao+'?text='+msg;
-return `<div class="product-card">
-<div class="img-wrap">
-<img src="${p.imagem}" class="product-img" alt="${p.nome}" onerror="this.src='https://via.placeholder.com/400x200?text=Sem+Imagem'">
-${p.destaque?'<span class="badge-destaque">⭐</span>':''}
-</div>
-<div class="product-body">
-<span class="product-badge ${isPdf?'badge-pdf':'badge-fisico'}">${isPdf?'📄 PDF':'📦 Físico'}</span>
-<h3 class="product-name">${p.nome}</h3>
-<p class="product-desc">${p.descricao}</p>
-<div class="product-footer">
-<div class="product-price">${temPromo?'<span class="price-old">'+formatar(p.preco)+'</span>':''}${formatar(temPromo?p.precoPromo:p.preco)}</div>
-<a href="${url}" target="_blank" class="btn-buy ${isPdf?'btn-buy-pdf':'btn-buy-fisico'}">
-${isPdf?'📄':'📦'} Comprar
-</a>
-</div>
-</div>
-</div>`
-}).join('')
-}
+    async function toggleTarefa(id, concluida) {
+      await fetch(`${API_URL}/db/tarefas/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ concluida })
+      });
+      carregarTarefas();
+    }
 
-function filtrar(){
-const b=document.getElementById('busca').value.toLowerCase();
-const c=document.getElementById('filtroCategoria').value;
-const t=document.getElementById('filtroTipo').value;
-let r=PRODUTOS;
-if(b)r=r.filter(p=>p.nome.toLowerCase().includes(b)||p.descricao.toLowerCase().includes(b));
-if(c)r=r.filter(p=>p.categoria===c);
-if(t)r=r.filter(p=>p.tipo===t);
-render(r);
-}
+    async function deletarTarefa(id) {
+      await fetch(`${API_URL}/db/tarefas/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      carregarTarefas();
+    }
 
-document.getElementById('busca').addEventListener('input',filtrar);
-document.getElementById('filtroCategoria').addEventListener('change',filtrar);
-document.getElementById('filtroTipo').addEventListener('change',filtrar);
+    function conectarRealtime() {
+      socket = io(API_URL);
+      
+      socket.on('connect', () => {
+        document.getElementById('status').className = 'online';
+        document.getElementById('status').textContent = '● Online';
+        socket.emit('authenticate', token);
+        socket.emit('subscribe', 'tarefas');
+      });
+      
+      socket.on('disconnect', () => {
+        document.getElementById('status').className = 'offline';
+        document.getElementById('status').textContent = '● Offline';
+      });
+      
+      socket.on('collection:change', (event) => {
+        console.log('Mudança detectada:', event);
+        carregarTarefas(); // Recarrega quando algo muda
+      });
+    }
 
-render(PRODUTOS);
-</script>
-
+    function sair() {
+      localStorage.removeItem('token');
+      token = null;
+      if (socket) socket.disconnect();
+      location.reload();
+    }
+  </script>
 </body>
 </html>
