@@ -1,559 +1,863 @@
 <!DOCTYPE html>
 <html lang="pt">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Madrassa I.M - Vídeo Aula</title>
-
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-
-    <!-- Jitsi Meet API -->
-    <script src="https://meet.jit.si/external_api.js"></script>
-
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
-
-        body { font-family: 'Poppins', sans-serif; }
-
-        .glass {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .gradient-bg {
-            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 50%, #1e3a5f 100%);
-        }
-
-        .card-hover {
-            transition: all 0.3s ease;
-        }
-        .card-hover:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-        }
-
-        .pulse-ring {
-            animation: pulse-ring 2s infinite;
-        }
-
-        @keyframes pulse-ring {
-            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-            70% { box-shadow: 0 0 0 15px rgba(34, 197, 94, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-        }
-
-        .hidden-section { display: none; }
-        .visible-section { display: block; }
-
-        /* JITSI CONTAINER - TELA GRANDE */
-        #jitsi-container {
-            width: 100%;
-            height: calc(100vh - 120px);
-            min-height: 600px;
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-        }
-
-        /* FULLSCREEN MODE */
-        .jitsi-fullscreen #jitsi-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 9999;
-            border-radius: 0;
-        }
-
-        .jitsi-fullscreen .jitsi-controls {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            z-index: 10000;
-        }
-
-        @media (max-width: 768px) {
-            #jitsi-container { 
-                height: calc(100vh - 100px);
-                min-height: 400px;
-            }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Madrassa I.M - Vídeo Aula</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+body { font-family: 'Poppins', sans-serif; }
+.gradient-bg { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%); }
+.glass { background: rgba(255,255,255,0.08); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.12); }
+.video-card { background: #1e293b; border-radius: 12px; overflow: hidden; position: relative; }
+.video-card video { width: 100%; height: 100%; object-fit: cover; }
+.video-label { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+.btn-control { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s; cursor: pointer; }
+.btn-control:hover { transform: scale(1.1); }
+.btn-on { background: rgba(255,255,255,0.2); }
+.btn-off { background: #ef4444; }
+.btn-record { background: #ef4444; }
+.btn-record.recording { animation: pulse-record 1.5s infinite; }
+.btn-record.saved { background: #10b981; }
+@keyframes pulse-record { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+.chat-msg { max-width: 80%; padding: 10px 16px; border-radius: 16px; margin-bottom: 8px; word-break: break-word; }
+.chat-me { background: #059669; margin-left: auto; border-bottom-right-radius: 4px; }
+.chat-other { background: #334155; margin-right: auto; border-bottom-left-radius: 4px; }
+.hidden { display: none !important; }
+.pulse { animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.spinner { border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #10b981; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+#localVideo { transform: scaleX(-1); }
+.recording-indicator { position: absolute; top: 8px; left: 8px; background: rgba(239,68,68,0.9); padding: 4px 12px; border-radius: 20px; font-size: 12px; display: flex; align-items: center; gap: 6px; z-index: 10; }
+.recording-indicator::before { content: ''; width: 8px; height: 8px; background: white; border-radius: 50%; animation: blink 1s infinite; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.connection-status { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+</style>
 <base target="_blank">
 </head>
 <body class="gradient-bg min-h-screen text-white">
 
-    <!-- NAVBAR -->
-    <nav class="glass sticky top-0 z-50 px-6 py-4">
-        <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-xl font-bold">M</div>
-                <h1 class="text-xl font-bold">Madrassa I.M</h1>
-            </div>
-            <div id="nav-buttons" class="flex gap-3">
-                <button onclick="showSection('home')" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">Início</button>
-                <button onclick="showSection('como-funciona')" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">Como Funciona</button>
-                <button onclick="showLoginModal()" class="px-4 py-2 bg-emerald-500 rounded-lg hover:bg-emerald-600 transition font-medium">Entrar na Aula</button>
-            </div>
-        </div>
-    </nav>
+<!-- ============ PÁGINA INICIAL ============ -->
+<div id="page-home" class="min-h-screen">
+<nav class="glass sticky top-0 z-50 px-6 py-4">
+<div class="max-w-7xl mx-auto flex justify-between items-center">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-xl font-bold">M</div>
+<h1 class="text-xl font-bold">Madrassa I.M</h1>
+</div>
+<div class="flex gap-3">
+<button onclick="showPage('home')" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">Início</button>
+<button onclick="showPage('como-funciona')" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">Como Funciona</button>
+<button onclick="showPage('economia')" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">💾 Economia</button>
+<button onclick="showLoginModal()" class="px-4 py-2 bg-emerald-500 rounded-lg hover:bg-emerald-600 transition font-medium">Entrar na Aula</button>
+</div>
+</div>
+</nav>
 
-    <!-- SEÇÃO: HOME -->
-    <section id="home" class="visible-section">
-        <!-- HERO -->
-        <div class="max-w-7xl mx-auto px-6 py-20 text-center">
-            <div class="inline-block px-4 py-1 bg-emerald-500/20 rounded-full text-emerald-300 text-sm font-medium mb-6">
-                🎓 Plataforma de Ensino Online
-            </div>
-            <h2 class="text-5xl md:text-6xl font-bold mb-6 leading-tight">
-                Madrassa I.M<br>
-                <span class="text-emerald-400">Vídeo Aula</span>
-            </h2>
-            <p class="text-xl text-gray-300 max-w-2xl mx-auto mb-10">
-                Aulas online ao vivo para todos os alunos. Entra na sala de aula virtual e aprende com os melhores professores.
-            </p>
-            <div class="flex flex-wrap justify-center gap-4">
-                <button onclick="showLoginModal()" class="px-8 py-4 bg-emerald-500 rounded-xl text-lg font-semibold hover:bg-emerald-600 transition card-hover pulse-ring">
-                    🚀 Entrar na Aula Agora
-                </button>
-                <button onclick="showSection('como-funciona')" class="px-8 py-4 glass rounded-xl text-lg font-semibold hover:bg-white/20 transition card-hover">
-                    📖 Como Funciona
-                </button>
-            </div>
-        </div>
+<div id="hero-section" class="max-w-7xl mx-auto px-6 py-20 text-center">
+<div class="inline-block px-4 py-1 bg-emerald-500/20 rounded-full text-emerald-300 text-sm font-medium mb-6">🎓 Plataforma de Ensino Online</div>
+<h2 class="text-5xl md:text-6xl font-bold mb-6 leading-tight">Madrassa I.M<br><span class="text-emerald-400">Vídeo Aula</span></h2>
+<p class="text-xl text-gray-300 max-w-2xl mx-auto mb-10">Aulas online com <strong>economia de dados</strong>. Professor transmite, alunos só recebem.</p>
+<div class="flex flex-wrap justify-center gap-4">
+<button onclick="showLoginModal()" class="px-8 py-4 bg-emerald-500 rounded-xl text-lg font-semibold hover:bg-emerald-600 transition pulse">🚀 Entrar na Aula Agora</button>
+<button onclick="showPage('como-funciona')" class="px-8 py-4 glass rounded-xl text-lg font-semibold hover:bg-white/20 transition">📖 Como Funciona</button>
+</div>
+<div class="mt-8 flex flex-wrap justify-center gap-3">
+<span class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/20 rounded-full text-emerald-300 text-sm">🔒 Sala Privada</span>
+<span class="inline-flex items-center gap-2 px-4 py-2 bg-green-500/20 rounded-full text-green-300 text-sm">💾 Economia de Dados</span>
+<span class="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/20 rounded-full text-blue-300 text-sm">📡 Modo Broadcast</span>
+</div>
+</div>
 
-        <!-- ESTATÍSTICAS -->
-        <div class="max-w-7xl mx-auto px-6 py-12">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="glass rounded-2xl p-8 text-center card-hover">
-                    <div class="text-4xl mb-3">🎥</div>
-                    <h3 class="text-2xl font-bold text-emerald-400">Aulas Ao Vivo</h3>
-                    <p class="text-gray-300 mt-2">Videoaulas em tempo real com interação direta</p>
-                </div>
-                <div class="glass rounded-2xl p-8 text-center card-hover">
-                    <div class="text-4xl mb-3">👥</div>
-                    <h3 class="text-2xl font-bold text-emerald-400">Sala Colaborativa</h3>
-                    <p class="text-gray-300 mt-2">Partilha de ecrã, chat e participação ativa</p>
-                </div>
-                <div class="glass rounded-2xl p-8 text-center card-hover">
-                    <div class="text-4xl mb-3">📱</div>
-                    <h3 class="text-2xl font-bold text-emerald-400">Acesso Fácil</h3>
-                    <p class="text-gray-300 mt-2">Entra pelo computador, tablet ou telemóvel</p>
-                </div>
-            </div>
-        </div>
-    </section>
+<div id="como-funciona-section" class="hidden max-w-5xl mx-auto px-6 py-16">
+<h2 class="text-4xl font-bold text-center mb-12">📖 Como Funciona</h2>
+<div class="space-y-6">
+<div class="glass rounded-2xl p-6 flex gap-4 items-start">
+<div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center font-bold shrink-0">1</div>
+<div><h3 class="text-xl font-bold text-emerald-400">Professor Entra e Transmite</h3><p class="text-gray-300">O professor liga câmara e microfone. Todos os alunos veem e ouvem.</p></div>
+</div>
+<div class="glass rounded-2xl p-6 flex gap-4 items-start">
+<div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center font-bold shrink-0">2</div>
+<div><h3 class="text-xl font-bold text-emerald-400">Alunos Entram (Só Recebem)</h3><p class="text-gray-300">Alunos veem e ouvem o professor. Câmara desligada por padrão.</p></div>
+</div>
+<div class="glass rounded-2xl p-6 flex gap-4 items-start">
+<div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center font-bold shrink-0">3</div>
+<div><h3 class="text-xl font-bold text-emerald-400">Aluno Quer Falar?</h3><p class="text-gray-300">Aluno clica em "🙋 Levantar Mão". Professor dá permissão.</p></div>
+</div>
+<div class="glass rounded-2xl p-6 flex gap-4 items-start">
+<div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center font-bold shrink-0">4</div>
+<div><h3 class="text-xl font-bold text-emerald-400">Gravação Local</h3><p class="text-gray-300">Professor pode gravar a aula e fazer download.</p></div>
+</div>
+</div>
+<div class="text-center mt-10">
+<button onclick="showLoginModal()" class="px-8 py-4 bg-emerald-500 rounded-xl text-lg font-semibold hover:bg-emerald-600 transition">🚀 Quero Experimentar</button>
+</div>
+</div>
 
-    <!-- SEÇÃO: COMO FUNCIONA -->
-    <section id="como-funciona" class="hidden-section max-w-5xl mx-auto px-6 py-16">
-        <h2 class="text-4xl font-bold text-center mb-12">📖 Como Funciona a Vídeo Aula</h2>
+<div id="economia-section" class="hidden max-w-5xl mx-auto px-6 py-16">
+<h2 class="text-4xl font-bold text-center mb-4">💾 Economia de Dados</h2>
+<p class="text-gray-300 text-center mb-10">Comparação de consumo de dados (megas)</p>
+<div class="glass rounded-2xl p-8 mb-8">
+<h3 class="text-2xl font-bold text-emerald-400 mb-6 text-center">📊 Consumo por Hora (Professor)</h3>
+<div class="space-y-4">
+<div class="flex items-center gap-4">
+<div class="w-32 text-sm text-gray-300">WebRTC P2P<br>(antigo)</div>
+<div class="flex-1 bg-gray-700 rounded-full h-8 overflow-hidden">
+<div class="bg-red-500 h-full rounded-full flex items-center justify-end pr-2" style="width: 100%"><span class="text-xs font-bold">~18 GB</span></div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="w-32 text-sm text-gray-300">Zoom/Meet</div>
+<div class="flex-1 bg-gray-700 rounded-full h-8 overflow-hidden">
+<div class="bg-yellow-500 h-full rounded-full flex items-center justify-end pr-2" style="width: 20%"><span class="text-xs font-bold">~3.6 GB</span></div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="w-32 text-sm text-gray-300 font-bold text-emerald-400">Madrassa I.M<br>(Broadcast)</div>
+<div class="flex-1 bg-gray-700 rounded-full h-8 overflow-hidden">
+<div class="bg-emerald-500 h-full rounded-full flex items-center justify-end pr-2" style="width: 10%"><span class="text-xs font-bold">~1.8 GB</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="glass rounded-2xl p-6">
+<div class="text-3xl mb-3">📡</div>
+<h3 class="text-lg font-bold text-emerald-400">Modo Broadcast</h3>
+<p class="text-gray-300 text-sm mt-2">Professor envia 1 stream. Todos recebem o mesmo.</p>
+</div>
+<div class="glass rounded-2xl p-6">
+<div class="text-3xl mb-3">🔇</div>
+<h3 class="text-lg font-bold text-emerald-400">Alunos Sem Câmara</h3>
+<p class="text-gray-300 text-sm mt-2">Por padrão, alunos só recebem. Não enviam vídeo.</p>
+</div>
+</div>
+</div>
+</div>
 
-        <div class="space-y-8">
-            <div class="glass rounded-2xl p-8 flex flex-col md:flex-row gap-6 items-start card-hover">
-                <div class="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center text-2xl font-bold shrink-0">1</div>
-                <div>
-                    <h3 class="text-2xl font-bold text-emerald-400 mb-2">Clica em "Entrar na Aula"</h3>
-                    <p class="text-gray-300">No topo da página ou no botão verde principal, clica para aceder à sala de aula. Não precisas de criar conta!</p>
-                </div>
-            </div>
+<!-- ============ SALA DE AULA ============ -->
+<div id="page-sala" class="hidden h-screen flex flex-col">
+<div class="glass px-4 py-3 flex justify-between items-center shrink-0">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-sm font-bold">M</div>
+<div>
+<h2 class="font-bold text-sm">Madrassa I.M - Sala de Aula</h2>
+<p class="text-xs text-gray-400" id="sala-status">🟢 Aula em direto</p>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span id="data-saver-badge" class="hidden px-2 py-1 bg-emerald-500/20 rounded text-emerald-300 text-xs">💾 Economia</span>
+<span id="participant-count" class="text-sm text-gray-300">👥 1</span>
+<button onclick="toggleChat()" class="px-3 py-1 bg-white/10 rounded-lg hover:bg-white/20 transition text-sm">💬 Chat</button>
+<button onclick="sairDaSala()" class="px-3 py-1 bg-red-500 rounded-lg hover:bg-red-600 transition text-sm">🚪 Sair</button>
+</div>
+</div>
 
-            <div class="glass rounded-2xl p-8 flex flex-col md:flex-row gap-6 items-start card-hover">
-                <div class="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center text-2xl font-bold shrink-0">2</div>
-                <div>
-                    <h3 class="text-2xl font-bold text-emerald-400 mb-2">Escreve o Teu Nome</h3>
-                    <p class="text-gray-300">Quando a sala abrir, escreve o teu nome para o professor te identificar. Podes usar o teu nome real ou nome de utilizador.</p>
-                </div>
-            </div>
+<div class="flex-1 flex overflow-hidden">
+<div class="flex-1 p-4 overflow-y-auto">
+<div id="videos-container" class="space-y-4">
+<!-- Vídeo do Professor -->
+<div class="video-card aspect-video relative" id="prof-video-container">
+<div id="recording-indicator" class="recording-indicator hidden">⏺️ A GRAVAR</div>
+<div id="connection-spinner" class="connection-status">
+<div class="spinner mx-auto mb-4"></div>
+<p class="text-gray-400" id="status-text">À espera do professor...</p>
+</div>
+<video id="profVideo" autoplay playsinline class="w-full h-full object-cover"></video>
+<div class="video-label">👨‍🏫 <span id="prof-name">Professor</span></div>
+</div>
+</div>
+</div>
 
-            <div class="glass rounded-2xl p-8 flex flex-col md:flex-row gap-6 items-start card-hover">
-                <div class="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center text-2xl font-bold shrink-0">3</div>
-                <div>
-                    <h3 class="text-2xl font-bold text-emerald-400 mb-2">Permite Câmara e Microfone</h3>
-                    <p class="text-gray-300">O navegador vai pedir permissão para usar a câmara e microfone. Clica em "Permitir" para poderes participar na aula.</p>
-                </div>
-            </div>
+<div id="chat-panel" class="hidden md:flex w-80 flex-col border-l border-white/10 bg-black/20">
+<div class="px-4 py-3 border-b border-white/10 font-bold">💬 Chat da Aula</div>
+<div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-2"></div>
+<div class="p-4 border-t border-white/10">
+<div class="flex gap-2">
+<input type="text" id="chat-input" placeholder="Escreve uma mensagem..." 
+class="flex-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:border-emerald-400"
+onkeypress="if(event.key==='Enter') enviarChat()">
+<button onclick="enviarChat()" class="px-4 py-2 bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">➤</button>
+</div>
+</div>
+</div>
+</div>
 
-            <div class="glass rounded-2xl p-8 flex flex-col md:flex-row gap-6 items-start card-hover">
-                <div class="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center text-2xl font-bold shrink-0">4</div>
-                <div>
-                    <h3 class="text-2xl font-bold text-emerald-400 mb-2">Participa na Aula</h3>
-                    <p class="text-gray-300">Podes ligar/desligar a câmara e microfone, usar o chat para perguntas, e ver a apresentação do professor em partilha de ecrã.</p>
-                </div>
-            </div>
+<!-- Controles Inferiores -->
+<div class="glass px-4 py-4 flex justify-center items-center gap-4 shrink-0">
+<button id="btn-mic" onclick="toggleMic()" class="btn-control btn-on" title="Microfone">
+<span id="icon-mic">🎤</span>
+</button>
+<button id="btn-cam" onclick="toggleCam()" class="btn-control btn-on hidden" title="Câmara">
+<span id="icon-cam">🎥</span>
+</button>
+<button id="btn-hand" onclick="levantarMao()" class="btn-control btn-on" title="Levantar Mão">
+<span id="icon-hand">🙋</span>
+</button>
+<button id="btn-record" onclick="toggleRecording()" class="btn-control btn-record hidden" title="Gravar Aula">
+<span id="icon-record">⏺️</span>
+</button>
+<button onclick="toggleChat()" class="btn-control btn-on md:hidden" title="Chat">
+<span>💬</span>
+</button>
+<button onclick="sairDaSala()" class="btn-control btn-off" title="Sair">
+<span>📞</span>
+</button>
+</div>
+</div>
 
-            <div class="glass rounded-2xl p-8 flex flex-col md:flex-row gap-6 items-start card-hover">
-                <div class="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center text-2xl font-bold shrink-0">5</div>
-                <div>
-                    <h3 class="text-2xl font-bold text-emerald-400 mb-2">Dúvidas? Usa o Chat!</h3>
-                    <p class="text-gray-300">Se tiveres alguma dúvida durante a aula, escreve no chat. O professor vai responder quando possível.</p>
-                </div>
-            </div>
-        </div>
+<!-- Chat Mobile Overlay -->
+<div id="chat-overlay" class="hidden fixed inset-0 bg-black/80 z-50 flex flex-col">
+<div class="px-4 py-3 border-b border-white/10 flex justify-between items-center bg-slate-900">
+<span class="font-bold">💬 Chat</span>
+<button onclick="toggleChat()" class="text-2xl">✕</button>
+</div>
+<div id="chat-messages-mobile" class="flex-1 overflow-y-auto p-4 space-y-2"></div>
+<div class="p-4 border-t border-white/10 bg-slate-900">
+<div class="flex gap-2">
+<input type="text" id="chat-input-mobile" placeholder="Escreve..." 
+class="flex-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:border-emerald-400"
+onkeypress="if(event.key==='Enter') enviarChatMobile()">
+<button onclick="enviarChatMobile()" class="px-4 py-2 bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">➤</button>
+</div>
+</div>
+</div>
 
-        <div class="text-center mt-12">
-            <button onclick="showLoginModal()" class="px-8 py-4 bg-emerald-500 rounded-xl text-lg font-semibold hover:bg-emerald-600 transition card-hover">
-                🚀 Quero Experimentar Agora
-            </button>
-        </div>
-    </section>
+<!-- ============ MODAIS ============ -->
+<div id="modal-login" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div class="glass rounded-2xl p-8 max-w-md w-full">
+<h3 class="text-2xl font-bold text-center mb-2">Entrar na Aula</h3>
+<p class="text-gray-300 text-center mb-6">Escolhe como queres aceder</p>
+<div class="space-y-4">
+<button onclick="entrarComoAluno()" class="w-full px-6 py-4 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition flex items-center gap-3">
+<span class="text-2xl">👨‍🎓</span>
+<div class="text-left"><div class="font-bold">Sou Aluno</div><div class="text-sm text-emerald-100">Ver aula (economia de dados)</div></div>
+</button>
+<button onclick="mostrarLoginAdmin()" class="w-full px-6 py-4 bg-blue-500/80 rounded-xl hover:bg-blue-500 transition flex items-center gap-3">
+<span class="text-2xl">👨‍🏫</span>
+<div class="text-left"><div class="font-bold">Sou Professor/Admin</div><div class="text-sm text-blue-100">Transmitir aula</div></div>
+</button>
+</div>
+<button onclick="fecharModal('modal-login')" class="w-full mt-4 px-4 py-2 text-gray-400 hover:text-white transition">Cancelar</button>
+</div>
+</div>
 
-    <!-- SEÇÃO: SALA DE AULA (JITSI) - TELA GRANDE -->
-    <section id="sala-aula" class="hidden-section">
-        <div class="px-4 py-4">
-            <div class="flex justify-between items-center mb-4 max-w-[1920px] mx-auto">
-                <h2 class="text-xl font-bold">🎓 Sala de Aula - Madrassa I.M</h2>
-                <div class="flex gap-3">
-                    <button onclick="toggleFullscreen()" class="px-4 py-2 bg-blue-500 rounded-lg hover:bg-blue-600 transition text-sm">
-                        🔳 Ecrã Completo
-                    </button>
-                    <button onclick="sairDaAula()" class="px-4 py-2 bg-red-500 rounded-lg hover:bg-red-600 transition text-sm">
-                        🚪 Sair da Aula
-                    </button>
-                </div>
-            </div>
-            <div class="max-w-[1920px] mx-auto">
-                <div id="jitsi-container"></div>
-            </div>
-        </div>
-    </section>
+<div id="modal-nome" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div class="glass rounded-2xl p-8 max-w-md w-full">
+<h3 class="text-2xl font-bold text-center mb-2">👨‍🎓 Bem-vindo!</h3>
+<p class="text-gray-300 text-center mb-6">Como te chamas?</p>
+<div class="space-y-4">
+<input type="text" id="input-nome-aluno" placeholder="Escreve o teu nome" 
+class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center focus:outline-none focus:border-emerald-400">
+<button onclick="confirmarEntradaAluno()" class="w-full px-6 py-3 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition font-bold">Entrar na Aula</button>
+</div>
+</div>
+</div>
 
-    <!-- SEÇÃO: PAINEL ADMIN -->
-    <section id="painel-admin" class="hidden-section max-w-7xl mx-auto px-6 py-8">
-        <div class="glass rounded-2xl p-8">
-            <h2 class="text-3xl font-bold text-emerald-400 mb-6">🔐 Painel de Administração</h2>
-            <p class="text-gray-300 mb-6">Bem-vindo, <span id="admin-nome" class="font-bold text-white"></span>! Aqui podes gerir a plataforma.</p>
+<div id="modal-admin" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div class="glass rounded-2xl p-8 max-w-md w-full">
+<h3 class="text-2xl font-bold text-center mb-2">🔐 Acesso Administrativo</h3>
+<div class="space-y-4 mt-6">
+<select id="select-admin" class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-emerald-400">
+<option value="" class="text-gray-800">Selecionar administrador...</option>
+<option value="Abdullah" class="text-gray-800">Abdullah</option>
+<option value="Abdulfatah" class="text-gray-800">Abdulfatah</option>
+</select>
+<input type="password" id="input-pin" maxlength="6" placeholder="PIN (6 dígitos)" 
+class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-2xl tracking-widest focus:outline-none focus:border-emerald-400">
+<button onclick="verificarAdmin()" class="w-full px-6 py-3 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition font-bold">Entrar</button>
+</div>
+<p id="msg-erro-admin" class="text-red-400 text-center mt-3 hidden">PIN incorreto. Tenta novamente.</p>
+<button onclick="fecharModal('modal-admin'); showModal('modal-login')" class="w-full mt-4 px-4 py-2 text-gray-400 hover:text-white transition">← Voltar</button>
+</div>
+</div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="bg-white/5 rounded-xl p-6">
-                    <h3 class="text-xl font-bold mb-4">📊 Estatísticas da Aula</h3>
-                    <div class="space-y-3">
-                        <div class="flex justify-between">
-                            <span class="text-gray-300">Estado da sala:</span>
-                            <span id="estado-sala" class="text-emerald-400 font-medium">Ativa</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-300">Nome da sala:</span>
-                            <span class="text-white font-medium">videoAula</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-300">Link direto:</span>
-                            <a href="https://meet.jit.si/videoAula" target="_blank" class="text-emerald-400 hover:underline">meet.jit.si/videoAula</a>
-                        </div>
-                    </div>
-                </div>
+<div id="modal-criar-sala" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div class="glass rounded-2xl p-8 max-w-md w-full">
+<h3 class="text-2xl font-bold text-center mb-2">🎓 Criar Sala de Aula</h3>
+<p class="text-gray-300 text-center mb-2">Modo Broadcast - Economia de Dados</p>
+<div class="inline-block px-3 py-1 bg-emerald-500/20 rounded-full text-emerald-300 text-xs mb-4">💾 Professor gasta dados de 1 pessoa só</div>
+<div class="space-y-4">
+<div>
+<label class="block text-sm text-gray-300 mb-1">Nome da Sala</label>
+<input type="text" id="input-nome-sala" value="madrassa-im-aula" 
+class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-emerald-400">
+</div>
+<div>
+<label class="block text-sm text-gray-300 mb-1">Password da Sala (opcional)</label>
+<input type="text" id="input-password-sala" placeholder="Deixa vazio para sem password" 
+class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-emerald-400">
+</div>
+<div>
+<label class="block text-sm text-gray-300 mb-1">O teu nome</label>
+<input type="text" id="input-nome-prof" value="Professor" 
+class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-emerald-400">
+</div>
+<div class="p-3 bg-emerald-500/10 rounded-xl">
+<p class="text-sm text-emerald-300">✅ Alunos entrarão em modo "só receber"</p>
+<p class="text-sm text-emerald-300">✅ Alunos só ligam câmara com permissão</p>
+<p class="text-sm text-emerald-300">✅ Economia de até 90% nos dados dos alunos</p>
+</div>
+<button onclick="criarSala()" class="w-full px-6 py-3 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition font-bold">🚀 Criar e Entrar na Sala</button>
+</div>
+</div>
+</div>
 
-                <div class="bg-white/5 rounded-xl p-6">
-                    <h3 class="text-xl font-bold mb-4">⚙️ Ações</h3>
-                    <div class="space-y-3">
-                        <button onclick="abrirSalaDireta()" class="w-full px-4 py-3 bg-emerald-500 rounded-lg hover:bg-emerald-600 transition text-left">
-                            🚀 Abrir Sala de Aula
-                        </button>
-                        <button onclick="copiarLinkAula()" class="w-full px-4 py-3 bg-blue-500 rounded-lg hover:bg-blue-600 transition text-left">
-                            📋 Copiar Link de Partilha
-                        </button>
-                        <button onclick="logoutAdmin()" class="w-full px-4 py-3 bg-red-500/50 rounded-lg hover:bg-red-500 transition text-left">
-                            🚪 Sair do Painel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
+<div id="modal-entrar-sala" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div class="glass rounded-2xl p-8 max-w-md w-full">
+<h3 class="text-2xl font-bold text-center mb-2">🎓 Entrar na Sala</h3>
+<div class="inline-block px-3 py-1 bg-green-500/20 rounded-full text-green-300 text-xs mb-4">💾 Modo Economia - Só recebes dados</div>
+<div class="space-y-4 mt-2">
+<div>
+<label class="block text-sm text-gray-300 mb-1">Nome da Sala</label>
+<input type="text" id="input-sala-aluno" placeholder="Nome da sala (ex: madrassa-im-aula)" 
+class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-emerald-400">
+</div>
+<div>
+<label class="block text-sm text-gray-300 mb-1">Password (se houver)</label>
+<input type="text" id="input-pass-aluno" placeholder="Password da sala" 
+class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-emerald-400">
+</div>
+<div>
+<label class="block text-sm text-gray-300 mb-1">O teu nome</label>
+<input type="text" id="input-nome-aluno-sala" placeholder="Escreve o teu nome" 
+class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-emerald-400">
+</div>
+<div class="p-3 bg-green-500/10 rounded-xl">
+<p class="text-sm text-green-300">💾 A tua câmara fica DESLIGADA por padrão</p>
+<p class="text-sm text-green-300">💾 Só recebes o vídeo do professor</p>
+<p class="text-sm text-green-300">💾 Podes levantar a mão para falar</p>
+</div>
+<button onclick="entrarSalaAluno()" class="w-full px-6 py-3 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition font-bold">🚀 Entrar na Sala</button>
+</div>
+<button onclick="fecharModal('modal-entrar-sala'); showModal('modal-login')" class="w-full mt-4 px-4 py-2 text-gray-400 hover:text-white transition">← Voltar</button>
+</div>
+</div>
 
-    <!-- MODAL: LOGIN -->
-    <div id="login-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="glass rounded-2xl p-8 max-w-md w-full">
-            <h3 class="text-2xl font-bold text-center mb-2">Entrar na Aula</h3>
-            <p class="text-gray-300 text-center mb-6">Escolhe como queres aceder</p>
+<div id="modal-gravacao" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div class="glass rounded-2xl p-8 max-w-md w-full text-center">
+<div class="text-5xl mb-4">🎬</div>
+<h3 class="text-2xl font-bold mb-2">Aula Gravada!</h3>
+<p class="text-gray-300 mb-6">A gravação foi guardada no teu dispositivo.</p>
+<div class="space-y-3">
+<a id="link-download" href="#" download class="block w-full px-6 py-3 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition font-bold">📥 Download do Vídeo</a>
+<button onclick="fecharModal('modal-gravacao')" class="w-full px-6 py-3 bg-white/10 rounded-xl hover:bg-white/20 transition">Fechar</button>
+</div>
+</div>
+</div>
 
-            <div class="space-y-4">
-                <button onclick="entrarComoAluno()" class="w-full px-6 py-4 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition flex items-center gap-3">
-                    <span class="text-2xl">👨‍🎓</span>
-                    <div class="text-left">
-                        <div class="font-bold">Sou Aluno</div>
-                        <div class="text-sm text-emerald-100">Entrar diretamente na aula</div>
-                    </div>
-                </button>
+<div id="modal-mao" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div class="glass rounded-2xl p-8 max-w-md w-full text-center">
+<div class="text-5xl mb-4">🙋</div>
+<h3 class="text-2xl font-bold mb-2">Mão Levantada!</h3>
+<p class="text-gray-300 mb-4">O professor foi notificado. Aguarda permissão para ligar a câmara.</p>
+<p class="text-sm text-gray-400">Enquanto isso, podes usar o microfone e o chat.</p>
+<button onclick="fecharModal('modal-mao')" class="w-full mt-4 px-6 py-3 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition font-bold">Entendido</button>
+</div>
+</div>
 
-                <button onclick="mostrarLoginAdmin()" class="w-full px-6 py-4 bg-blue-500/80 rounded-xl hover:bg-blue-500 transition flex items-center gap-3">
-                    <span class="text-2xl">👨‍🏫</span>
-                    <div class="text-left">
-                        <div class="font-bold">Sou Professor/Admin</div>
-                        <div class="text-sm text-blue-100">Acesso com PIN</div>
-                    </div>
-                </button>
-            </div>
+<!-- ============ SCRIPTS ============ -->
+<script>
+const firebaseConfig = {
+apiKey: "AIzaSyD2rNS7HSJyek3OCrRquudFgqQSWXZJYrY",
+authDomain: "madrassa-online-b851c.firebaseapp.com",
+databaseURL: "https://madrassa-online-b851c-default-rtdb.firebaseio.com",
+projectId: "madrassa-online-b851c",
+storageBucket: "madrassa-online-b851c.firebasestorage.app",
+messagingSenderId: "360782668012",
+appId: "1:360782668012:web:d501ef187911db632445c9",
+measurementId: "G-RV9GD4S22T"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const ADMINISTRADORES = { "Abdullah": "123456", "Abdulfatah": "123456" };
 
-            <button onclick="fecharLoginModal()" class="w-full mt-4 px-4 py-2 text-gray-400 hover:text-white transition">
-                Cancelar
-            </button>
-        </div>
-    </div>
+let meuNome = "", nomeSala = "", passwordSala = "", souProfessor = false;
+let localStream = null, peers = {};
+let minhaId = Math.random().toString(36).substring(2, 10);
+let salaRef = null, micOn = true, camOn = false;
+let mediaRecorder = null, recordedChunks = [], isRecording = false;
+let maoLevantada = false;
+let professorId = null;
 
-    <!-- MODAL: LOGIN ADMIN -->
-    <div id="admin-login-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="glass rounded-2xl p-8 max-w-md w-full">
-            <h3 class="text-2xl font-bold text-center mb-2">🔐 Acesso Administrativo</h3>
-            <p class="text-gray-300 text-center mb-6">Introduz as tuas credenciais</p>
+function showPage(page) {
+document.getElementById('hero-section').classList.add('hidden');
+document.getElementById('como-funciona-section').classList.add('hidden');
+document.getElementById('economia-section').classList.add('hidden');
+if (page === 'home') document.getElementById('hero-section').classList.remove('hidden');
+if (page === 'como-funciona') document.getElementById('como-funciona-section').classList.remove('hidden');
+if (page === 'economia') document.getElementById('economia-section').classList.remove('hidden');
+window.scrollTo(0,0);
+}
 
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm text-gray-300 mb-1">Nome de Administrador</label>
-                    <select id="admin-nome-select" class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-emerald-400">
-                        <option value="" class="text-gray-800">Selecionar...</option>
-                        <option value="Abdullah" class="text-gray-800">Abdullah</option>
-                        <option value="Abdulfatah" class="text-gray-800">Abdulfatah</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-300 mb-1">PIN</label>
-                    <input type="password" id="admin-pin" maxlength="6" placeholder="******" 
-                           class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-2xl tracking-widest focus:outline-none focus:border-emerald-400">
-                </div>
-                <button onclick="verificarAdmin()" class="w-full px-6 py-3 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition font-bold">
-                    Entrar
-                </button>
-            </div>
+function showModal(id) { document.getElementById(id).classList.remove('hidden'); document.getElementById(id).classList.add('flex'); }
+function fecharModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
 
-            <p id="erro-login" class="text-red-400 text-center mt-3 hidden">PIN incorreto. Tenta novamente.</p>
+function showLoginModal() { showModal('modal-login'); }
+function entrarComoAluno() { fecharModal('modal-login'); showModal('modal-entrar-sala'); }
+function mostrarLoginAdmin() { fecharModal('modal-login'); showModal('modal-admin'); }
 
-            <button onclick="voltarLoginModal()" class="w-full mt-4 px-4 py-2 text-gray-400 hover:text-white transition">
-                ← Voltar
-            </button>
-        </div>
-    </div>
+function verificarAdmin() {
+const nome = document.getElementById('select-admin').value;
+const pin = document.getElementById('input-pin').value;
+if (ADMINISTRADORES[nome] && ADMINISTRADORES[nome] === pin) {
+fecharModal('modal-admin');
+showModal('modal-criar-sala');
+document.getElementById('input-nome-prof').value = nome;
+souProfessor = true;
+} else {
+document.getElementById('msg-erro-admin').classList.remove('hidden');
+document.getElementById('input-pin').value = '';
+}
+}
 
-    <!-- MODAL: NOME DO ALUNO -->
-    <div id="aluno-nome-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="glass rounded-2xl p-8 max-w-md w-full">
-            <h3 class="text-2xl font-bold text-center mb-2">👨‍🎓 Bem-vindo!</h3>
-            <p class="text-gray-300 text-center mb-6">Como te chamas?</p>
+function confirmarEntradaAluno() {
+const nome = document.getElementById('input-nome-aluno').value.trim();
+if (!nome) { alert("Escreve o teu nome!"); return; }
+meuNome = nome;
+fecharModal('modal-nome');
+iniciarSala("madrassa-im-aula", "", nome, false);
+}
 
-            <div class="space-y-4">
-                <input type="text" id="aluno-nome-input" placeholder="Escreve o teu nome" 
-                       class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center focus:outline-none focus:border-emerald-400">
-                <button onclick="entrarNaSalaAluno()" class="w-full px-6 py-3 bg-emerald-500 rounded-xl hover:bg-emerald-600 transition font-bold">
-                    Entrar na Aula
-                </button>
-            </div>
-        </div>
-    </div>
+function criarSala() {
+const sala = document.getElementById('input-nome-sala').value.trim();
+const pass = document.getElementById('input-password-sala').value.trim();
+const nome = document.getElementById('input-nome-prof').value.trim();
+if (!sala) { alert("Escreve um nome para a sala!"); return; }
+if (!nome) { alert("Escreve o teu nome!"); return; }
+meuNome = nome;
+fecharModal('modal-criar-sala');
+iniciarSala(sala, pass, nome, true);
+}
 
-    <!-- FOOTER -->
-    <footer class="glass mt-20 py-8 text-center text-gray-400">
-        <p>© 2026 Madrassa I.M - Vídeo Aula. Todos os direitos reservados.</p>
-        <p class="text-sm mt-2">Plataforma de ensino online ao vivo</p>
-    </footer>
+function entrarSalaAluno() {
+const sala = document.getElementById('input-sala-aluno').value.trim();
+const pass = document.getElementById('input-pass-aluno').value.trim();
+const nome = document.getElementById('input-nome-aluno-sala').value.trim();
+if (!sala) { alert("Escreve o nome da sala!"); return; }
+if (!nome) { alert("Escreve o teu nome!"); return; }
+meuNome = nome;
+fecharModal('modal-entrar-sala');
+iniciarSala(sala, pass, nome, false);
+}
 
-    <script>
-        // ========== FIREBASE CONFIG ==========
-        const firebaseConfig = {
-            apiKey: "AIzaSyD2rNS7HSJyek3OCrRquudFgqQSWXZJYrY",
-            authDomain: "madrassa-online-b851c.firebaseapp.com",
-            databaseURL: "https://madrassa-online-b851c-default-rtdb.firebaseio.com",
-            projectId: "madrassa-online-b851c",
-            storageBucket: "madrassa-online-b851c.firebasestorage.app",
-            messagingSenderId: "360782668012",
-            appId: "1:360782668012:web:d501ef187911db632445c9",
-            measurementId: "G-RV9GD4S22T"
-        };
+// ========== INICIAR SALA ==========
+async function iniciarSala(sala, pass, nome, professor) {
+nomeSala = sala; passwordSala = pass; souProfessor = professor;
+document.getElementById('page-home').classList.add('hidden');
+document.getElementById('page-sala').classList.remove('hidden');
 
-        // Inicializar Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+if (souProfessor) {
+document.getElementById('prof-name').textContent = nome;
+document.getElementById('btn-cam').classList.remove('hidden');
+document.getElementById('btn-record').classList.remove('hidden');
+document.getElementById('data-saver-badge').classList.remove('hidden');
+camOn = true;
 
-        // ========== ADMINISTRADORES (ENCRIPTADOS) ==========
-        const ADMINISTRADORES = {
-            "Abdullah": { pin: "123456", id: "admin_001" },
-            "Abdulfatah": { pin: "123456", id: "admin_002" }
-        };
+try {
+localStream = await navigator.mediaDevices.getUserMedia({ 
+video: { width: { ideal: 640 }, height: { ideal: 480 } }, 
+audio: true 
+});
+// Esconder spinner, mostrar vídeo
+document.getElementById('connection-spinner').classList.add('hidden');
+document.getElementById('profVideo').srcObject = localStream;
+} catch (err) {
+alert("Não foi possível aceder à câmara/microfone.");
+sairDaSala(); return;
+}
+} else {
+// ALUNO
+document.getElementById('prof-name').textContent = "Professor";
+document.getElementById('btn-cam').classList.add('hidden');
+document.getElementById('btn-record').classList.add('hidden');
+document.getElementById('data-saver-badge').classList.remove('hidden');
+camOn = false; micOn = true;
 
-        // Variáveis globais
-        let jitsiApi = null;
-        let adminAtual = null;
-        let nomeAluno = "";
-        let isFullscreen = false;
+try {
+localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+} catch (err) {
+console.log("Microfone não disponível");
+}
+}
 
-        // ========== FUNÇÕES DE NAVEGAÇÃO ==========
-        function showSection(sectionId) {
-            document.querySelectorAll('section').forEach(s => {
-                s.classList.remove('visible-section');
-                s.classList.add('hidden-section');
-            });
-            document.getElementById(sectionId).classList.remove('hidden-section');
-            document.getElementById(sectionId).classList.add('visible-section');
-            window.scrollTo(0, 0);
-        }
+updateMicButton(); updateCamButton();
 
-        // ========== MODAIS ==========
-        function showLoginModal() {
-            document.getElementById('login-modal').classList.remove('hidden');
-        }
+salaRef = db.ref('salas/' + nomeSala);
+const snapshot = await salaRef.child('info').once('value');
+const info = snapshot.val();
+if (info && info.password && info.password !== pass) {
+alert("Password incorreta!"); sairDaSala(); return;
+}
 
-        function fecharLoginModal() {
-            document.getElementById('login-modal').classList.add('hidden');
-            document.getElementById('admin-login-modal').classList.add('hidden');
-            document.getElementById('aluno-nome-modal').classList.add('hidden');
-        }
+if (souProfessor) {
+await salaRef.child('info').set({ 
+password: passwordSala, 
+professor: meuNome, 
+professorId: minhaId,
+createdAt: Date.now() 
+});
+}
 
-        function mostrarLoginAdmin() {
-            document.getElementById('login-modal').classList.add('hidden');
-            document.getElementById('admin-login-modal').classList.remove('hidden');
-            document.getElementById('erro-login').classList.add('hidden');
-        }
+await salaRef.child('participants/' + minhaId).set({
+nome: meuNome, 
+isProfessor: souProfessor, 
+joinedAt: Date.now(), 
+micOn: micOn, 
+camOn: camOn
+});
+salaRef.child('participants/' + minhaId).onDisconnect().remove();
 
-        function voltarLoginModal() {
-            document.getElementById('admin-login-modal').classList.add('hidden');
-            document.getElementById('login-modal').classList.remove('hidden');
-        }
+// ========== CONECTAR COM TODOS OS PARTICIPANTES ==========
+// Professor: conecta com todos os alunos existentes
+// Aluno: conecta com o professor
+salaRef.child('participants').on('child_added', (snapshot) => {
+const peerId = snapshot.key;
+const data = snapshot.val();
+if (peerId === minhaId) return;
 
-        // ========== LOGIN ADMIN ==========
-        function verificarAdmin() {
-            const nome = document.getElementById('admin-nome-select').value;
-            const pin = document.getElementById('admin-pin').value;
+if (souProfessor && !data.isProfessor) {
+// Professor conecta com aluno (envia vídeo)
+console.log("Professor conectando com aluno:", peerId);
+conectarComoProfessor(peerId, data.nome);
+} else if (!souProfessor && data.isProfessor) {
+// Aluno conecta com professor (recebe vídeo)
+console.log("Aluno conectando com professor:", peerId);
+professorId = peerId;
+conectarComoAluno(peerId, data.nome);
+}
+atualizarContador();
+});
 
-            if (ADMINISTRADORES[nome] && ADMINISTRADORES[nome].pin === pin) {
-                adminAtual = nome;
-                document.getElementById('admin-login-modal').classList.add('hidden');
-                document.getElementById('admin-nome').textContent = nome;
-                showSection('painel-admin');
+salaRef.child('participants').on('child_removed', (snapshot) => {
+const peerId = snapshot.key;
+if (peers[peerId]) { 
+peers[peerId].close(); 
+delete peers[peerId]; 
+}
+if (peerId === professorId) {
+// Professor saiu
+if (!souProfessor) {
+document.getElementById('connection-spinner').classList.remove('hidden');
+document.getElementById('status-text').textContent = "Professor saiu da sala";
+document.getElementById('profVideo').srcObject = null;
+}
+}
+atualizarContador();
+});
 
-                db.ref('logs/admin').push({
-                    admin: btoa(nome),
-                    timestamp: Date.now(),
-                    action: 'login'
-                });
-            } else {
-                document.getElementById('erro-login').classList.remove('hidden');
-                document.getElementById('admin-pin').value = '';
-            }
-        }
+// Ouvir sinais
+salaRef.child('signals/' + minhaId).on('child_added', async (snapshot) => {
+const signal = snapshot.val();
+console.log("Sinal recebido:", signal.type, "de", signal.from);
+await processarSinal(signal);
+snapshot.ref.remove();
+});
 
-        function logoutAdmin() {
-            adminAtual = null;
-            showSection('home');
-        }
+// Chat
+salaRef.child('chat').on('child_added', (snapshot) => {
+const msg = snapshot.val(); 
+adicionarChatMsg(msg.nome, msg.texto, msg.id === minhaId);
+});
 
-        // ========== ALUNO ==========
-        function entrarComoAluno() {
-            document.getElementById('login-modal').classList.add('hidden');
-            document.getElementById('aluno-nome-modal').classList.remove('hidden');
-        }
+// Verificar se professor já está na sala (para aluno)
+if (!souProfessor) {
+salaRef.child('participants').once('value', (snap) => {
+let professorFound = false;
+snap.forEach((child) => {
+if (child.key !== minhaId && child.val().isProfessor) {
+professorFound = true;
+professorId = child.key;
+console.log("Professor já na sala:", professorId);
+conectarComoAluno(professorId, child.val().nome);
+}
+});
+if (!professorFound) {
+console.log("Professor ainda não na sala, aguardando...");
+}
+});
+}
+}
 
-        function entrarNaSalaAluno() {
-            nomeAluno = document.getElementById('aluno-nome-input').value.trim();
-            if (!nomeAluno) {
-                nomeAluno = "Aluno";
-            }
-            document.getElementById('aluno-nome-modal').classList.add('hidden');
-            iniciarJitsi(nomeAluno);
-            showSection('sala-aula');
-        }
+// ========== PROFESSOR CONECTA COM ALUNO ==========
+async function conectarComoProfessor(peerId, peerNome) {
+if (peers[peerId]) return;
+console.log("Criando conexão com aluno:", peerId);
 
-        // ========== JITSI MEET - TELA GRANDE ==========
-        function iniciarJitsi(displayName) {
-            const domain = "meet.jit.si";
-            const options = {
-                roomName: "videoAula",
-                width: "100%",
-                height: "100%",
-                parentNode: document.getElementById('jitsi-container'),
-                userInfo: {
-                    displayName: displayName
-                },
-                configOverwrite: {
-                    startWithAudioMuted: true,
-                    startWithVideoMuted: false,
-                    prejoinPageEnabled: false
-                },
-                interfaceConfigOverwrite: {
-                    SHOW_JITSI_WATERMARK: false,
-                    SHOW_BRAND_WATERMARK: false,
-                    DEFAULT_BACKGROUND: "#1e3a5f",
-                    TOOLBAR_BUTTONS: [
-                        'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',
-                        'fodeviceselection', 'hangup', 'profile', 'chat', 'recording',
-                        'livestreaming', 'etherpad', 'sharedvideo', 'settings', 'raisehand',
-                        'videoquality', 'filmstrip', 'feedback', 'stats', 'shortcuts',
-                        'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone'
-                    ]
-                }
-            };
+const pc = new RTCPeerConnection({
+iceServers: [
+{ urls: 'stun:stun.l.google.com:19302' },
+{ urls: 'stun:stun1.l.google.com:19302' }
+]
+});
+peers[peerId] = pc;
 
-            if (jitsiApi) {
-                jitsiApi.dispose();
-            }
+// Adicionar tracks locais (vídeo + áudio do professor)
+if (localStream) {
+localStream.getTracks().forEach(track => {
+pc.addTrack(track, localStream);
+});
+}
 
-            jitsiApi = new JitsiMeetExternalAPI(domain, options);
+// ICE candidates
+pc.onicecandidate = (event) => {
+if (event.candidate) {
+console.log("Professor enviando ICE para", peerId);
+enviarSinal(peerId, { type: 'ice', candidate: event.candidate });
+}
+};
 
-            jitsiApi.addEventListener('videoConferenceLeft', function() {
-                sairDaAula();
-            });
-        }
+// Criar e enviar oferta
+const offer = await pc.createOffer();
+await pc.setLocalDescription(offer);
+console.log("Professor enviando offer para", peerId);
+enviarSinal(peerId, { type: 'offer', sdp: offer });
+}
 
-        function toggleFullscreen() {
-            const container = document.getElementById('jitsi-container');
-            const section = document.getElementById('sala-aula');
+// ========== ALUNO CONECTA COM PROFESSOR ==========
+async function conectarComoAluno(peerId, peerNome) {
+if (peers[peerId]) return;
+console.log("Criando conexão com professor:", peerId);
 
-            if (!document.fullscreenElement) {
-                if (container.requestFullscreen) {
-                    container.requestFullscreen();
-                } else if (container.webkitRequestFullscreen) {
-                    container.webkitRequestFullscreen();
-                } else if (container.msRequestFullscreen) {
-                    container.msRequestFullscreen();
-                }
-                isFullscreen = true;
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                } else if (document.webkitExitFullscreen) {
-                    document.webkitExitFullscreen();
-                } else if (document.msExitFullscreen) {
-                    document.msExitFullscreen();
-                }
-                isFullscreen = false;
-            }
-        }
+document.getElementById('status-text').textContent = "A conectar com o professor...";
 
-        function sairDaAula() {
-            if (jitsiApi) {
-                jitsiApi.dispose();
-                jitsiApi = null;
-            }
-            if (document.fullscreenElement) {
-                document.exitFullscreen();
-            }
-            showSection('home');
-        }
+const pc = new RTCPeerConnection({
+iceServers: [
+{ urls: 'stun:stun.l.google.com:19302' },
+{ urls: 'stun:stun1.l.google.com:19302' }
+]
+});
+peers[peerId] = pc;
 
-        // ========== FUNÇÕES ADMIN ==========
-        function abrirSalaDireta() {
-            iniciarJitsi(adminAtual || "Professor");
-            showSection('sala-aula');
-        }
+// Receber stream do professor
+pc.ontrack = (event) => {
+console.log("Aluno recebeu track do professor!");
+if (event.streams && event.streams[0]) {
+document.getElementById('connection-spinner').classList.add('hidden');
+document.getElementById('profVideo').srcObject = event.streams[0];
+}
+};
 
-        function copiarLinkAula() {
-            const link = "https://meet.jit.si/videoAula";
-            navigator.clipboard.writeText(link).then(() => {
-                alert("✅ Link copiado: " + link);
-            });
-        }
+// ICE candidates
+pc.onicecandidate = (event) => {
+if (event.candidate) {
+console.log("Aluno enviando ICE para professor:", peerId);
+enviarSinal(peerId, { type: 'ice', candidate: event.candidate });
+}
+};
 
-        // Fechar modais ao clicar fora
-        window.onclick = function(event) {
-            if (event.target.classList.contains('fixed')) {
-                event.target.classList.add('hidden');
-            }
-        };
-    </script>
+// Aluno cria data channel (para chat)
+pc.ondatachannel = (event) => {
+console.log("Aluno recebeu data channel");
+};
+}
+
+// ========== PROCESSAR SINAL ==========
+async function processarSinal(signal) {
+const peerId = signal.from;
+
+if (signal.type === 'offer') {
+// Aluno recebe oferta do professor
+console.log("Aluno recebeu offer do professor");
+if (!peers[peerId]) await conectarComoAluno(peerId, "Professor");
+const pc = peers[peerId];
+await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+const answer = await pc.createAnswer();
+await pc.setLocalDescription(answer);
+console.log("Aluno enviando answer");
+enviarSinal(peerId, { type: 'answer', sdp: answer });
+} 
+else if (signal.type === 'answer') {
+// Professor recebe answer do aluno
+console.log("Professor recebeu answer do aluno:", peerId);
+const pc = peers[peerId];
+if (pc) await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+}
+else if (signal.type === 'ice') {
+// Ambos recebem ICE
+console.log("Recebendo ICE de:", peerId);
+const pc = peers[peerId];
+if (pc) await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+}
+}
+
+function enviarSinal(peerId, data) {
+data.from = minhaId;
+salaRef.child('signals/' + peerId).push(data);
+}
+
+// ========== CONTROLES ==========
+function toggleMic() {
+if (!localStream) return;
+micOn = !micOn;
+localStream.getAudioTracks().forEach(t => t.enabled = micOn);
+updateMicButton();
+if (salaRef) salaRef.child('participants/' + minhaId).update({ micOn: micOn });
+}
+
+function updateMicButton() {
+const btn = document.getElementById('btn-mic');
+const icon = document.getElementById('icon-mic');
+if (micOn) { btn.className = 'btn-control btn-on'; icon.textContent = '🎤'; }
+else { btn.className = 'btn-control btn-off'; icon.textContent = '🔇'; }
+}
+
+function toggleCam() {
+if (!localStream || !souProfessor) return;
+camOn = !camOn;
+localStream.getVideoTracks().forEach(t => t.enabled = camOn);
+updateCamButton();
+if (salaRef) salaRef.child('participants/' + minhaId).update({ camOn: camOn });
+}
+
+function updateCamButton() {
+const btn = document.getElementById('btn-cam');
+const icon = document.getElementById('icon-cam');
+if (camOn) { btn.className = 'btn-control btn-on'; icon.textContent = '🎥'; }
+else { btn.className = 'btn-control btn-off'; icon.textContent = '📷'; }
+}
+
+function levantarMao() {
+if (souProfessor) return;
+maoLevantada = !maoLevantada;
+const btn = document.getElementById('btn-hand');
+const icon = document.getElementById('icon-hand');
+if (maoLevantada) {
+btn.classList.add('pulse');
+icon.textContent = '✋';
+if (salaRef) salaRef.child('participants/' + minhaId).update({ maoLevantada: true });
+showModal('modal-mao');
+} else {
+btn.classList.remove('pulse');
+icon.textContent = '🙋';
+if (salaRef) salaRef.child('participants/' + minhaId).update({ maoLevantada: false });
+}
+}
+
+// ========== GRAVAÇÃO ==========
+function toggleRecording() {
+if (!isRecording) { iniciarGravacao(); } else { pararGravacao(); }
+}
+
+function iniciarGravacao() {
+if (!localStream) { alert("Precisas de câmara/microfone para gravar."); return; }
+recordedChunks = [];
+const combinedStream = new MediaStream();
+localStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
+localStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+
+try { mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus' }); }
+catch (e) { try { mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus' }); }
+catch (e2) { mediaRecorder = new MediaRecorder(combinedStream); } }
+
+mediaRecorder.ondataavailable = (event) => { if (event.data && event.data.size > 0) recordedChunks.push(event.data); };
+mediaRecorder.onstop = () => {
+const blob = new Blob(recordedChunks, { type: 'video/webm' });
+const url = URL.createObjectURL(blob);
+document.getElementById('link-download').href = url;
+document.getElementById('link-download').download = 'MadrassaIM_Aula_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.webm';
+showModal('modal-gravacao');
+};
+mediaRecorder.start(1000);
+isRecording = true;
+const btn = document.getElementById('btn-record');
+const icon = document.getElementById('icon-record');
+btn.classList.add('recording');
+icon.textContent = '⏹️';
+document.getElementById('recording-indicator').classList.remove('hidden');
+}
+
+function pararGravacao() {
+if (mediaRecorder && isRecording) {
+mediaRecorder.stop();
+isRecording = false;
+const btn = document.getElementById('btn-record');
+const icon = document.getElementById('icon-record');
+btn.classList.remove('recording');
+btn.classList.add('saved');
+icon.textContent = '✅';
+document.getElementById('recording-indicator').classList.add('hidden');
+setTimeout(() => { btn.classList.remove('saved'); icon.textContent = '⏺️'; }, 3000);
+}
+}
+
+// ========== CHAT ==========
+function toggleChat() {
+const overlay = document.getElementById('chat-overlay');
+const panel = document.getElementById('chat-panel');
+if (window.innerWidth < 768) { overlay.classList.toggle('hidden'); overlay.classList.toggle('flex'); }
+else { panel.classList.toggle('hidden'); panel.classList.toggle('flex'); }
+}
+
+function enviarChat() {
+const input = document.getElementById('chat-input');
+const texto = input.value.trim();
+if (!texto || !salaRef) return;
+salaRef.child('chat').push({ id: minhaId, nome: meuNome, texto: texto, time: Date.now() });
+input.value = '';
+}
+
+function enviarChatMobile() {
+const input = document.getElementById('chat-input-mobile');
+const texto = input.value.trim();
+if (!texto || !salaRef) return;
+salaRef.child('chat').push({ id: minhaId, nome: meuNome, texto: texto, time: Date.now() });
+input.value = '';
+}
+
+function adicionarChatMsg(nome, texto, isMe) {
+const msgDiv = document.createElement('div');
+msgDiv.className = 'chat-msg ' + (isMe ? 'chat-me' : 'chat-other');
+msgDiv.innerHTML = `<strong class="text-xs opacity-70">${nome}</strong><br>${texto}`;
+document.getElementById('chat-messages').appendChild(msgDiv);
+document.getElementById('chat-messages-mobile').appendChild(msgDiv.cloneNode(true));
+document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+document.getElementById('chat-messages-mobile').scrollTop = document.getElementById('chat-messages-mobile').scrollHeight;
+}
+
+function atualizarContador() {
+if (!salaRef) return;
+salaRef.child('participants').once('value', (snap) => {
+document.getElementById('participant-count').textContent = '👥 ' + snap.numChildren();
+});
+}
+
+// ========== SAIR ==========
+function sairDaSala() {
+if (isRecording) pararGravacao();
+if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+Object.values(peers).forEach(pc => pc.close()); peers = {};
+if (salaRef) { 
+salaRef.child('participants/' + minhaId).remove(); 
+salaRef.child('signals/' + minhaId).remove(); 
+salaRef.off(); 
+}
+
+// Reset UI
+document.getElementById('connection-spinner').classList.remove('hidden');
+document.getElementById('status-text').textContent = "À espera do professor...";
+document.getElementById('profVideo').srcObject = null;
+document.getElementById('chat-messages').innerHTML = '';
+document.getElementById('chat-messages-mobile').innerHTML = '';
+document.getElementById('page-sala').classList.add('hidden');
+document.getElementById('page-home').classList.remove('hidden');
+showPage('home');
+micOn = true; camOn = false; maoLevantada = false;
+updateMicButton(); updateCamButton();
+const btn = document.getElementById('btn-record');
+btn.classList.remove('recording', 'saved');
+document.getElementById('icon-record').textContent = '⏺️';
+isRecording = false;
+professorId = null;
+}
+
+window.onclick = function(e) {
+if (e.target.classList.contains('fixed')) { e.target.classList.add('hidden'); e.target.classList.remove('flex'); }
+};
+</script>
 </body>
 </html>
