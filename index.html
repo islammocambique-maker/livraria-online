@@ -40,7 +40,6 @@ body { font-family: 'Poppins', sans-serif; }
 .participant-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); margin-bottom: 4px; }
 </style>
 <base target="_blank">
-<base target="_blank">
 </head>
 <body class="gradient-bg min-h-screen text-white">
 
@@ -305,6 +304,7 @@ class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white
 
 <!-- ============ SCRIPTS ============ -->
 <script>
+// ==================== CONFIGURAÇÃO FIREBASE ====================
 const firebaseConfig = {
 apiKey: "AIzaSyD2rNS7HSJyek3OCrRquudFgqQSWXZJYrY",
 authDomain: "madrassa-online-b851c.firebaseapp.com",
@@ -315,18 +315,18 @@ messagingSenderId: "360782668012",
 appId: "1:360782668012:web:d501ef187911db632445c9",
 measurementId: "G-RV9GD4S22T"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const ADMINISTRADORES = { "Abdullah": "123456", "Abdulfatah": "123456" };
 const NOME_SALA = "madrassa-im-aula-unica";
-const SALA_REF = db.ref('salas/' + NOME_SALA);
 
+// ==================== VARIÁVEIS GLOBAIS ====================
 let meuNome = "";
 let souProfessor = false;
 let localStream = null;
-let peers = {}; // { peerId: RTCPeerConnection }
-let minhaId = Math.random().toString(36).substring(2, 10);
+let minhaId = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 let micOn = true;
 let camOn = true;
 let mediaRecorder = null;
@@ -334,661 +334,1078 @@ let recordedChunks = [];
 let isRecording = false;
 let maoLevantada = false;
 
-// ========== NAVEGAÇÃO ==========
-function showPage(page) {
-document.getElementById('hero-section').classList.add('hidden');
-document.getElementById('como-funciona-section').classList.add('hidden');
-if (page === 'home') document.getElementById('hero-section').classList.remove('hidden');
-if (page === 'como-funciona') document.getElementById('como-funciona-section').classList.remove('hidden');
-window.scrollTo(0,0);
+// Gerenciador de conexões WebRTC
+const rtcManager = {
+  peers: new Map(),           // peerId -> PeerConnectionWrapper
+  signalsRef: null,           // Referência Firebase para sinais
+  participantsRef: null,      // Referência Firebase para participantes
+  chatRef: null,              // Referência Firebase para chat
+  kicksRef: null,             // Referência Firebase para kicks
+  heartbeatInterval: null,    // Intervalo do heartbeat
+  cleanupInterval: null,      // Intervalo de limpeza
+  reconnectTimeouts: new Map(), // peerId -> timeoutId
+
+  // Configuração ICE otimizada para estabilidade
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
+  ],
+
+  // Configuração do peer connection
+  pcConfig: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ],
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
+  }
+};
+
+// ==================== CLASSE PEER CONNECTION WRAPPER ====================
+// Implementa o Perfect Negotiation Pattern
+class PeerConnectionWrapper {
+  constructor(peerId, isRemoteProfessor) {
+    this.peerId = peerId;
+    this.isRemoteProfessor = isRemoteProfessor;
+    this.pc = null;
+    this.makingOffer = false;
+    this.ignoreOffer = false;
+    this.isPolite = false;      // Determinado por comparação de IDs
+    this.iceQueue = [];         // Fila de ICE candidates pendentes
+    this.remoteStream = null;
+    this.connectionState = 'new';
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectDelay = 1000;
+    this.heartbeatLastSeen = Date.now();
+    this.localTracksAdded = false;
+    this.negotiationNeeded = false;
+    this.closed = false;
+
+    this.init();
+  }
+
+  init() {
+    // Determinar quem é "polite" (quem cede em caso de colisão)
+    // O peer com ID alfabeticamente menor é o impolite (cria offer)
+    this.isPolite = minhaId > this.peerId;
+
+    this.pc = new RTCPeerConnection(rtcManager.pcConfig);
+
+    // Monitorar estado da conexão
+    this.pc.onconnectionstatechange = () => {
+      this.connectionState = this.pc.connectionState;
+      console.log(`[${this.peerId}] connectionState:`, this.pc.connectionState);
+
+      if (this.pc.connectionState === 'failed' || this.pc.connectionState === 'disconnected') {
+        this.handleConnectionFailure();
+      } else if (this.pc.connectionState === 'connected') {
+        this.reconnectAttempts = 0;
+        this.reconnectDelay = 1000;
+        // Esconder spinner de loading
+        const loadingEl = document.getElementById('loading-' + this.peerId);
+        if (loadingEl) loadingEl.classList.add('hidden');
+      }
+    };
+
+    this.pc.oniceconnectionstatechange = () => {
+      console.log(`[${this.peerId}] iceConnectionState:`, this.pc.iceConnectionState);
+      if (this.pc.iceConnectionState === 'failed') {
+        this.pc.restartIce();
+      }
+    };
+
+    this.pc.onsignalingstatechange = () => {
+      console.log(`[${this.peerId}] signalingState:`, this.pc.signalingState);
+    };
+
+    // Adicionar tracks locais
+    this.addLocalTracks();
+
+    // Receber stream remoto
+    this.pc.ontrack = (event) => {
+      console.log(`[${this.peerId}] ontrack:`, event.track.kind, 'streams:', event.streams.length);
+      this.handleRemoteTrack(event);
+    };
+
+    // ICE candidates
+    this.pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.sendSignal({
+          type: 'ice',
+          candidate: {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+            usernameFragment: event.candidate.usernameFragment
+          }
+        });
+      }
+    };
+
+    // Negociação necessária (Perfect Negotiation Pattern)
+    this.pc.onnegotiationneeded = async () => {
+      console.log(`[${this.peerId}] negotiationneeded`);
+
+      try {
+        this.makingOffer = true;
+        await this.pc.setLocalDescription();
+
+        // Só envia offer se ainda for válido
+        if (!this.closed) {
+          this.sendSignal({
+            type: 'offer',
+            sdp: this.pc.localDescription
+          });
+        }
+      } catch (err) {
+        console.error(`[${this.peerId}] Erro na negociação:`, err);
+      } finally {
+        this.makingOffer = false;
+      }
+    };
+
+    // Se não for polite, iniciar conexão
+    if (!this.isPolite) {
+      console.log(`[${this.peerId}] Sou impolite, vou criar offer`);
+      // A negociação será acionada automaticamente quando tracks forem adicionadas
+    } else {
+      console.log(`[${this.peerId}] Sou polite, aguardo offer`);
+    }
+  }
+
+  addLocalTracks() {
+    if (!localStream || this.localTracksAdded) return;
+
+    localStream.getTracks().forEach(track => {
+      console.log(`[${this.peerId}] Adicionando track:`, track.kind);
+      this.pc.addTrack(track, localStream);
+    });
+
+    this.localTracksAdded = true;
+  }
+
+  handleRemoteTrack(event) {
+    const [stream] = event.streams;
+    if (!stream) return;
+
+    this.remoteStream = stream;
+
+    if (this.isRemoteProfessor) {
+      // Aluno recebe stream do professor
+      const profVideo = document.getElementById('profVideo');
+      if (profVideo) {
+        profVideo.srcObject = stream;
+        document.getElementById('connection-spinner').classList.add('hidden');
+      }
+    } else {
+      // Professor recebe stream do aluno
+      const videoEl = document.getElementById('video-' + this.peerId);
+      if (videoEl) {
+        videoEl.srcObject = stream;
+        const loadingEl = document.getElementById('loading-' + this.peerId);
+        if (loadingEl) loadingEl.classList.add('hidden');
+      }
+    }
+  }
+
+  async processSignal(signal) {
+    try {
+      if (signal.type === 'offer') {
+        console.log(`[${this.peerId}] Recebido OFFER`);
+
+        // Perfect Negotiation: verificar colisão
+        const readyForOffer = !this.makingOffer && 
+          (this.pc.signalingState === 'stable' || this.pc.signalingState === 'have-local-offer');
+
+        const offerCollision = signal.type === 'offer' && !readyForOffer;
+
+        this.ignoreOffer = offerCollision && !this.isPolite;
+
+        if (this.ignoreOffer) {
+          console.log(`[${this.peerId}] Ignorando offer (colisão, sou impolite)`);
+          return;
+        }
+
+        // Rollback se necessário
+        if (this.pc.signalingState !== 'stable' && this.pc.signalingState !== 'have-local-offer') {
+          console.log(`[${this.peerId}] Rollback para aceitar offer`);
+          await this.pc.setLocalDescription({type: 'rollback'});
+        }
+
+        await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+
+        // Processar fila de ICE candidates
+        this.processIceQueue();
+
+        // Criar answer
+        await this.pc.setLocalDescription();
+
+        if (!this.closed) {
+          this.sendSignal({
+            type: 'answer',
+            sdp: this.pc.localDescription
+          });
+        }
+
+      } else if (signal.type === 'answer') {
+        console.log(`[${this.peerId}] Recebido ANSWER`);
+
+        if (this.pc.signalingState === 'have-local-offer') {
+          await this.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          this.processIceQueue();
+        } else {
+          console.log(`[${this.peerId}] Ignorando answer, estado:`, this.pc.signalingState);
+        }
+
+      } else if (signal.type === 'ice') {
+        console.log(`[${this.peerId}] Recebido ICE`);
+
+        if (signal.candidate && signal.candidate.candidate) {
+          // Se não tiver remoteDescription, guardar na fila
+          if (!this.pc.remoteDescription) {
+            console.log(`[${this.peerId}] ICE enfileirado (sem remoteDescription)`);
+            this.iceQueue.push(signal.candidate);
+          } else {
+            await this.addIceCandidate(signal.candidate);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[${this.peerId}] Erro ao processar sinal:`, err);
+    }
+  }
+
+  async addIceCandidate(candidate) {
+    try {
+      const iceInit = {
+        candidate: candidate.candidate,
+        sdpMid: candidate.sdpMid !== null ? candidate.sdpMid : 0,
+        sdpMLineIndex: candidate.sdpMLineIndex !== null ? candidate.sdpMLineIndex : 0,
+        usernameFragment: candidate.usernameFragment
+      };
+      await this.pc.addIceCandidate(new RTCIceCandidate(iceInit));
+      console.log(`[${this.peerId}] ICE candidate adicionado`);
+    } catch (e) {
+      console.error(`[${this.peerId}] Erro ao adicionar ICE:`, e.message);
+    }
+  }
+
+  processIceQueue() {
+    console.log(`[${this.peerId}] Processando fila ICE (${this.iceQueue.length} candidates)`);
+    while (this.iceQueue.length > 0) {
+      const candidate = this.iceQueue.shift();
+      this.addIceCandidate(candidate);
+    }
+  }
+
+  sendSignal(data) {
+    if (this.closed) return;
+    data.from = minhaId;
+    data.to = this.peerId;
+    data.timestamp = Date.now();
+    db.ref('salas/' + NOME_SALA + '/signals/' + this.peerId).push(data);
+  }
+
+  handleConnectionFailure() {
+    console.log(`[${this.peerId}] Falha de conexão detectada`);
+
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+      console.log(`[${this.peerId}] Tentando reconexão ${this.reconnectAttempts}/${this.maxReconnectAttempts} em ${delay}ms`);
+
+      const timeoutId = setTimeout(() => {
+        if (!this.closed) {
+          this.reconnect();
+        }
+      }, delay);
+
+      rtcManager.reconnectTimeouts.set(this.peerId, timeoutId);
+    } else {
+      console.log(`[${this.peerId}] Máximo de reconexões atingido`);
+      this.close();
+    }
+  }
+
+  reconnect() {
+    console.log(`[${this.peerId}] Reconectando...`);
+    this.close(false); // Fechar sem remover do DOM
+
+    // Recriar conexão
+    const newWrapper = new PeerConnectionWrapper(this.peerId, this.isRemoteProfessor);
+    rtcManager.peers.set(this.peerId, newWrapper);
+  }
+
+  close(removeFromManager = true) {
+    console.log(`[${this.peerId}] Fechando conexão`);
+    this.closed = true;
+
+    // Cancelar timeout de reconexão
+    const timeoutId = rtcManager.reconnectTimeouts.get(this.peerId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      rtcManager.reconnectTimeouts.delete(this.peerId);
+    }
+
+    // Fechar RTCPeerConnection
+    if (this.pc) {
+      this.pc.onconnectionstatechange = null;
+      this.pc.oniceconnectionstatechange = null;
+      this.pc.onsignalingstatechange = null;
+      this.pc.ontrack = null;
+      this.pc.onicecandidate = null;
+      this.pc.onnegotiationneeded = null;
+      this.pc.close();
+      this.pc = null;
+    }
+
+    // Limpar stream remoto
+    if (this.remoteStream) {
+      this.remoteStream.getTracks().forEach(t => t.stop());
+      this.remoteStream = null;
+    }
+
+    if (removeFromManager) {
+      rtcManager.peers.delete(this.peerId);
+      removerVideoAluno(this.peerId);
+    }
+  }
+
+  updateHeartbeat() {
+    this.heartbeatLastSeen = Date.now();
+  }
 }
 
-function showModal(id) { document.getElementById(id).classList.remove('hidden'); document.getElementById(id).classList.add('flex'); }
-function fecharModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
+// ==================== NAVEGAÇÃO E MODAIS ====================
+function showPage(page) {
+  document.getElementById('hero-section').classList.add('hidden');
+  document.getElementById('como-funciona-section').classList.add('hidden');
+  if (page === 'home') document.getElementById('hero-section').classList.remove('hidden');
+  if (page === 'como-funciona') document.getElementById('como-funciona-section').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+
+function showModal(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('hidden');
+  el.classList.add('flex');
+}
+
+function fecharModal(id) {
+  const el = document.getElementById(id);
+  el.classList.add('hidden');
+  el.classList.remove('flex');
+}
 
 function showLoginModal() { showModal('modal-login'); }
 function entrarComoAluno() { fecharModal('modal-login'); showModal('modal-aluno'); }
 function mostrarLoginAdmin() { fecharModal('modal-login'); showModal('modal-admin'); }
 
 function verificarAdmin() {
-const nome = document.getElementById('select-admin').value;
-const pin = document.getElementById('input-pin').value;
-if (ADMINISTRADORES[nome] && ADMINISTRADORES[nome] === pin) {
-fecharModal('modal-admin');
-document.getElementById('input-nome-prof').value = nome;
-showModal('modal-prof-nome');
-} else {
-document.getElementById('msg-erro-admin').classList.remove('hidden');
-document.getElementById('input-pin').value = '';
-}
-}
-
-// ========== ALUNO ENTRA ==========
-function confirmarEntradaAluno() {
-const nome = document.getElementById('input-nome-aluno').value.trim();
-if (!nome) { alert("Escreve o teu nome!"); return; }
-meuNome = nome;
-souProfessor = false;
-fecharModal('modal-aluno');
-entrarSala();
-}
-
-// ========== PROFESSOR ENTRA ==========
-function iniciarAulaProfessor() {
-const nome = document.getElementById('input-nome-prof').value.trim();
-if (!nome) { alert("Escreve o teu nome!"); return; }
-meuNome = nome;
-souProfessor = true;
-fecharModal('modal-prof-nome');
-entrarSala();
-}
-
-// ========== ENTRAR NA SALA (AMBOS) ==========
-async function entrarSala() {
-document.getElementById('page-home').classList.add('hidden');
-document.getElementById('page-sala').classList.remove('hidden');
-
-if (souProfessor) {
-console.log('👨‍🏫 MODO PROFESSOR ativado');
-document.getElementById('prof-name').textContent = meuNome;
-document.getElementById('btn-record').classList.remove('hidden');
-camOn = true;
-
-try {
-localStream = await navigator.mediaDevices.getUserMedia({ 
-video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 20 } }, 
-audio: { sampleRate: 48000, channelCount: 2, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-});
-document.getElementById('connection-spinner').classList.add('hidden');
-document.getElementById('profVideo').srcObject = localStream;
-} catch (err) {
-alert("Não foi possível aceder à câmara/microfone.");
-sairDaSala(); return;
-}
-} else {
-// ALUNO
-console.log('👨‍🎓 MODO ALUNO ativado');
-document.getElementById('prof-name').textContent = "Professor";
-document.getElementById('btn-record').classList.add('hidden');
-camOn = true; // Aluno também pode ligar câmara
-
-try {
-localStream = await navigator.mediaDevices.getUserMedia({ 
-video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 20 } }, 
-audio: { sampleRate: 48000, channelCount: 2, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-});
-} catch (err) {
-try {
-localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-camOn = false;
-} catch (err2) {
-console.log("Sem permissões");
-}
-}
-}
-
-updateMicButton(); updateCamButton();
-
-// Log participantes existentes
-const snapExistentes = await SALA_REF.child('participants').once('value');
-console.log('👥 Participantes existentes na sala:', snapExistentes.numChildren());
-snapExistentes.forEach(child => {
-  if (child.key !== minhaId) {
-    console.log('  →', child.val().nome, '(Professor:', child.val().isProfessor + ')');
+  const nome = document.getElementById('select-admin').value;
+  const pin = document.getElementById('input-pin').value;
+  if (ADMINISTRADORES[nome] && ADMINISTRADORES[nome] === pin) {
+    fecharModal('modal-admin');
+    document.getElementById('input-nome-prof').value = nome;
+    showModal('modal-prof-nome');
+  } else {
+    document.getElementById('msg-erro-admin').classList.remove('hidden');
+    document.getElementById('input-pin').value = '';
   }
-});
-
-// Registrar na sala
-await SALA_REF.child('participants/' + minhaId).set({
-nome: meuNome,
-isProfessor: souProfessor,
-joinedAt: Date.now(),
-micOn: micOn,
-camOn: camOn,
-maoLevantada: false
-});
-SALA_REF.child('participants/' + minhaId).onDisconnect().remove();
-
-// Se é professor, marcar como ativo
-if (souProfessor) {
-await SALA_REF.child('professor').set({
-id: minhaId,
-nome: meuNome,
-active: true,
-startedAt: Date.now()
-});
-SALA_REF.child('professor').onDisconnect().remove();
 }
 
-// ========== CONECTAR COM TODOS OS PARTICIPANTES ==========
-// Quando alguém entra, conecta com essa pessoa
-SALA_REF.child('participants').on('child_added', (snapshot) => {
-const peerId = snapshot.key;
-const data = snapshot.val();
-if (peerId === minhaId) return;
-
-console.log('👤 Novo participante:', data.nome, 'Professor?', data.isProfessor);
-
-// Criar elemento de vídeo para este participante
-if (!data.isProfessor) {
-criarVideoAluno(peerId, data.nome);
+// ==================== ENTRADA DO ALUNO ====================
+function confirmarEntradaAluno() {
+  const nome = document.getElementById('input-nome-aluno').value.trim();
+  if (!nome) { alert("Escreve o teu nome!"); return; }
+  meuNome = nome;
+  souProfessor = false;
+  fecharModal('modal-aluno');
+  entrarSala();
 }
 
-// Iniciar conexão WebRTC
-iniciarConexao(peerId, data.isProfessor);
-});
-
-// Quando alguém sai
-SALA_REF.child('participants').on('child_removed', (snapshot) => {
-const peerId = snapshot.key;
-if (peers[peerId]) {
-peers[peerId].close();
-delete peers[peerId];
-}
-removerVideoAluno(peerId);
-atualizarListaParticipantes();
-});
-
-// Quando dados mudam (mão levantada, etc)
-SALA_REF.child('participants').on('child_changed', (snapshot) => {
-atualizarListaParticipantes();
-});
-
-// Ouvir sinais WebRTC
-SALA_REF.child('signals/' + minhaId).on('child_added', async (snapshot) => {
-const signal = snapshot.val();
-console.log("Sinal recebido:", signal.type, "de", signal.from);
-await processarSinal(signal);
-snapshot.ref.remove();
-});
-
-// Chat
-SALA_REF.child('chat').on('child_added', (snapshot) => {
-const msg = snapshot.val();
-adicionarChatMsg(msg.nome, msg.texto, msg.id === minhaId);
-});
-
-// Kick (remocao forcada)
-SALA_REF.child('kicks/' + minhaId).on('value', (snapshot) => {
-if (snapshot.exists()) {
-  alert('🚫 Foste removido da aula por ' + snapshot.val().by);
-  sairDaSala();
-  snapshot.ref.remove();
-}
-});
-
-// Atualizar lista e contador
-atualizarListaParticipantes();
-SALA_REF.child('participants').on('value', () => {
-atualizarContador();
-atualizarListaParticipantes();
-});
+// ==================== ENTRADA DO PROFESSOR ====================
+function iniciarAulaProfessor() {
+  const nome = document.getElementById('input-nome-prof').value.trim();
+  if (!nome) { alert("Escreve o teu nome!"); return; }
+  meuNome = nome;
+  souProfessor = true;
+  fecharModal('modal-prof-nome');
+  entrarSala();
 }
 
-// ========== CRIAR/REMOVER VÍDEO DE ALUNO ==========
+// ==================== ENTRAR NA SALA ====================
+async function entrarSala() {
+  document.getElementById('page-home').classList.add('hidden');
+  document.getElementById('page-sala').classList.remove('hidden');
+
+  try {
+    // Obter stream local
+    const constraints = {
+      video: { 
+        width: { ideal: 640, max: 1280 }, 
+        height: { ideal: 480, max: 720 }, 
+        frameRate: { ideal: 15, max: 24 } 
+      }, 
+      audio: { 
+        sampleRate: 48000, 
+        channelCount: 2, 
+        echoCancellation: true, 
+        noiseSuppression: true, 
+        autoGainControl: true 
+      }
+    };
+
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    if (souProfessor) {
+      console.log('👨‍🏫 MODO PROFESSOR');
+      document.getElementById('prof-name').textContent = meuNome;
+      document.getElementById('btn-record').classList.remove('hidden');
+      document.getElementById('connection-spinner').classList.add('hidden');
+      document.getElementById('profVideo').srcObject = localStream;
+      camOn = true;
+    } else {
+      console.log('👨‍🎓 MODO ALUNO');
+      document.getElementById('prof-name').textContent = "Professor";
+      document.getElementById('btn-record').classList.add('hidden');
+      camOn = true;
+    }
+
+    updateMicButton();
+    updateCamButton();
+
+  } catch (err) {
+    console.error("Erro ao aceder media devices:", err);
+    // Tentar só áudio
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      camOn = false;
+      updateCamButton();
+    } catch (err2) {
+      console.error("Sem permissões de áudio:", err2);
+    }
+  }
+
+  // Configurar referências Firebase
+  const salaRef = db.ref('salas/' + NOME_SALA);
+  rtcManager.signalsRef = salaRef.child('signals/' + minhaId);
+  rtcManager.participantsRef = salaRef.child('participants');
+  rtcManager.chatRef = salaRef.child('chat');
+  rtcManager.kicksRef = salaRef.child('kicks/' + minhaId);
+
+  // Registrar na sala
+  await rtcManager.participantsRef.child(minhaId).set({
+    nome: meuNome,
+    isProfessor: souProfessor,
+    joinedAt: Date.now(),
+    lastSeen: Date.now(),
+    micOn: micOn,
+    camOn: camOn,
+    maoLevantada: false
+  });
+
+  // onDisconnect
+  rtcManager.participantsRef.child(minhaId).onDisconnect().remove();
+
+  // Se é professor, marcar como ativo
+  if (souProfessor) {
+    await salaRef.child('professor').set({
+      id: minhaId,
+      nome: meuNome,
+      active: true,
+      startedAt: Date.now()
+    });
+    salaRef.child('professor').onDisconnect().remove();
+  }
+
+  // Iniciar heartbeat
+  iniciarHeartbeat();
+
+  // Iniciar limpeza de participantes mortos
+  iniciarCleanup();
+
+  // Configurar listeners
+  setupFirebaseListeners();
+
+  // Atualizar UI
+  atualizarListaParticipantes();
+  atualizarContador();
+}
+
+// ==================== LISTENERS FIREBASE ====================
+function setupFirebaseListeners() {
+  const salaRef = db.ref('salas/' + NOME_SALA);
+
+  // Participantes entrando
+  rtcManager.participantsRef.on('child_added', (snapshot) => {
+    const peerId = snapshot.key;
+    const data = snapshot.val();
+
+    if (peerId === minhaId) return;
+
+    console.log('👤 Novo participante:', data.nome, 'Professor?', data.isProfessor);
+
+    // Criar elemento de vídeo para aluno (se não for professor)
+    if (!data.isProfessor) {
+      criarVideoAluno(peerId, data.nome);
+    }
+
+    // Criar conexão WebRTC (se ainda não existir)
+    if (!rtcManager.peers.has(peerId)) {
+      const wrapper = new PeerConnectionWrapper(peerId, data.isProfessor);
+      rtcManager.peers.set(peerId, wrapper);
+    }
+
+    atualizarListaParticipantes();
+    atualizarContador();
+  });
+
+  // Participantes saindo
+  rtcManager.participantsRef.on('child_removed', (snapshot) => {
+    const peerId = snapshot.key;
+    console.log('👤 Participante saiu:', peerId);
+
+    const wrapper = rtcManager.peers.get(peerId);
+    if (wrapper) {
+      wrapper.close();
+    }
+
+    removerVideoAluno(peerId);
+    atualizarListaParticipantes();
+    atualizarContador();
+  });
+
+  // Participantes atualizando
+  rtcManager.participantsRef.on('child_changed', (snapshot) => {
+    atualizarListaParticipantes();
+  });
+
+  // Sinais WebRTC
+  rtcManager.signalsRef.on('child_added', async (snapshot) => {
+    const signal = snapshot.val();
+    if (!signal || signal.from === minhaId) {
+      snapshot.ref.remove();
+      return;
+    }
+
+    console.log("📡 Sinal recebido:", signal.type, "de", signal.from);
+
+    // Remover imediatamente para evitar reprocessamento
+    snapshot.ref.remove();
+
+    // Criar peer se não existir
+    let wrapper = rtcManager.peers.get(signal.from);
+    if (!wrapper) {
+      const snap = await rtcManager.participantsRef.child(signal.from).once('value');
+      const data = snap.val() || {};
+      wrapper = new PeerConnectionWrapper(signal.from, data.isProfessor);
+      rtcManager.peers.set(signal.from, wrapper);
+    }
+
+    await wrapper.processSignal(signal);
+  });
+
+  // Chat
+  rtcManager.chatRef.on('child_added', (snapshot) => {
+    const msg = snapshot.val();
+    if (!msg) return;
+    adicionarChatMsg(msg.nome, msg.texto, msg.id === minhaId);
+  });
+
+  // Kicks
+  rtcManager.kicksRef.on('value', (snapshot) => {
+    if (snapshot.exists()) {
+      alert('🚫 Foste removido da aula por ' + snapshot.val().by);
+      sairDaSala();
+      snapshot.ref.remove();
+    }
+  });
+
+  // Atualizar contador em tempo real
+  rtcManager.participantsRef.on('value', () => {
+    atualizarContador();
+  });
+}
+
+// ==================== HEARTBEAT ====================
+function iniciarHeartbeat() {
+  // Enviar heartbeat a cada 5 segundos
+  rtcManager.heartbeatInterval = setInterval(() => {
+    if (rtcManager.participantsRef) {
+      rtcManager.participantsRef.child(minhaId).update({
+        lastSeen: Date.now()
+      });
+    }
+  }, 5000);
+}
+
+// ==================== LIMPEZA DE PARTICIPANTES MORTOS ====================
+function iniciarCleanup() {
+  // Verificar a cada 15 segundos
+  rtcManager.cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    const timeout = 30000; // 30 segundos sem heartbeat = morto
+
+    rtcManager.participantsRef.once('value', (snapshot) => {
+      snapshot.forEach((child) => {
+        const peerId = child.key;
+        const data = child.val();
+
+        if (peerId === minhaId) return;
+
+        if (data.lastSeen && (now - data.lastSeen > timeout)) {
+          console.log('🧹 Limpando participante morto:', peerId);
+          rtcManager.participantsRef.child(peerId).remove();
+
+          const wrapper = rtcManager.peers.get(peerId);
+          if (wrapper) {
+            wrapper.close();
+          }
+          removerVideoAluno(peerId);
+        }
+      });
+    });
+  }, 15000);
+}
+
+// ==================== GESTÃO DE VÍDEOS ====================
 function criarVideoAluno(peerId, nome) {
-if (document.getElementById('video-container-' + peerId)) {
-  console.log('⚠️ Vídeo do aluno já existe:', peerId);
-  return;
-}
+  if (document.getElementById('video-container-' + peerId)) {
+    return;
+  }
 
-// Buscar nome real do participante se disponível
-SALA_REF.child('participants/' + peerId + '/nome').once('value').then(snap => {
-  const nomeReal = snap.val() || nome || 'Aluno';
   const container = document.createElement('div');
   container.id = 'video-container-' + peerId;
   container.className = 'video-card aspect-video relative';
   container.style.minHeight = '120px';
   container.style.background = '#0f172a';
   container.innerHTML = `
-  <video id="video-${peerId}" autoplay playsinline muted class="w-full h-full object-cover" style="transform: scaleX(-1); min-height:120px;"></video>
-  <div class="video-label">👤 ${nomeReal}</div>
-  <div id="muted-${peerId}" class="video-muted hidden">🔇</div>
-  <div id="loading-${peerId}" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#10b981; font-size:12px;">⏳ A ligar...</div>
+    <video id="video-${peerId}" autoplay playsinline muted class="w-full h-full object-cover" style="transform: scaleX(-1); min-height:120px;"></video>
+    <div class="video-label">👤 ${nome || 'Aluno'}</div>
+    <div id="muted-${peerId}" class="video-muted hidden">🔇</div>
+    <div id="loading-${peerId}" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#10b981; font-size:12px;">⏳ A ligar...</div>
   `;
   document.getElementById('alunos-grid').appendChild(container);
-  console.log('📺 Vídeo do aluno CRIADO:', peerId, 'nome:', nomeReal);
-  logDebug('📺 Aluno ' + nomeReal + ' adicionado à grid', 'ok');
-
-  // Verificar se grid está visível
-  const grid = document.getElementById('alunos-grid');
-  console.log('📐 Grid visível?', grid.children.length, 'filhos');
-});
 }
 
 function removerVideoAluno(peerId) {
-const el = document.getElementById('video-container-' + peerId);
-if (el) el.remove();
+  const el = document.getElementById('video-container-' + peerId);
+  if (el) el.remove();
 }
 
-// ========== WEBRTC CONEXÃO ==========
-async function iniciarConexao(peerId, isPeerProfessor) {
-if (peers[peerId]) return;
-console.log("Iniciando conexão com:", peerId);
-
-const pc = new RTCPeerConnection({
-iceServers: [
-{ urls: 'stun:stun.l.google.com:19302' },
-{ urls: 'stun:stun1.l.google.com:19302' },
-{ urls: 'stun:stun2.l.google.com:19302' }
-]
-});
-
-// Limitar bitrate de vídeo para poupar dados
-pc.onnegotiationneeded = async () => {
-  const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-  if (sender) {
-    const params = sender.getParameters();
-    if (!params.encodings) params.encodings = [{}];
-    params.encodings[0].maxBitrate = 150000; // 150 kbps para vídeo (muito baixo)
-    params.encodings[0].maxFramerate = 15;
-    params.encodings[0].scaleResolutionDownBy = 2;
-    await sender.setParameters(params);
-  }
-  const audioSender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
-  if (audioSender) {
-    const params = audioSender.getParameters();
-    if (!params.encodings) params.encodings = [{}];
-    params.encodings[0].maxBitrate = 64000; // 64 kbps para áudio (bom qualidade)
-    await audioSender.setParameters(params);
-  }
-};
-peers[peerId] = pc;
-
-// Monitorar mudanças de estado
-pc.onconnectionstatechange = () => {
-  console.log('🔗 Estado da conexão com', peerId.slice(0,4) + ':', pc.connectionState);
-  if (pc.connectionState === 'connected') {
-    logDebug('🔗 Conectado com ' + peerId.slice(0,4), 'ok');
-  } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-    logDebug('❌ Conexão falhou com ' + peerId.slice(0,4), 'erro');
-  }
-};
-pc.oniceconnectionstatechange = () => {
-  console.log('🧊 ICE estado com', peerId.slice(0,4) + ':', pc.iceConnectionState);
-};
-pc.onsignalingstatechange = () => {
-  console.log('📶 Sinalização com', peerId.slice(0,4) + ':', pc.signalingState);
-};
-
-// Adicionar tracks locais
-if (localStream) {
-localStream.getTracks().forEach(track => {
-console.log("Adicionando track:", track.kind);
-pc.addTrack(track, localStream);
-});
-}
-
-// Receber stream remoto
-pc.ontrack = (event) => {
-console.log('📡 Track recebida de:', peerId, 'tipo:', event.track.kind);
-const stream = event.streams[0];
-if (stream) {
-if (isPeerProfessor) {
-// Aluno recebe stream do professor
-console.log("Aluno recebeu stream do professor!");
-document.getElementById('connection-spinner').classList.add('hidden');
-document.getElementById('profVideo').srcObject = stream;
-} else {
-// Professor recebe stream do aluno
-console.log("Professor recebeu stream do aluno!");
-const videoEl = document.getElementById('video-' + peerId);
-if (videoEl) {
-videoEl.srcObject = stream;
-}
-}
-}
-};
-
-// ICE candidates
-pc.onicecandidate = (event) => {
-if (event.candidate) {
-const cand = event.candidate;
-enviarSinal(peerId, { 
-  type: 'ice', 
-  candidate: {
-    candidate: cand.candidate,
-    sdpMid: cand.sdpMid,
-    sdpMLineIndex: cand.sdpMLineIndex,
-    usernameFragment: cand.usernameFragment
-  }
-});
-}
-};
-
-// Criar oferta (quem entra depois cria oferta)
-const profSnap = await SALA_REF.child('professor').once('value');
-const profData = profSnap.val();
-
-// Se sou professor e aluno entrou, EU crio oferta
-// Se sou aluno e professor já está, EU crio oferta
-const shouldCreateOffer = (souProfessor && !isPeerProfessor) || (!souProfessor && isPeerProfessor);
-
-if (shouldCreateOffer) {
-console.log("Criando offer para:", peerId);
-const offer = await pc.createOffer();
-await pc.setLocalDescription(offer);
-enviarSinal(peerId, { type: 'offer', sdp: offer });
-}
-}
-
-async function processarSinal(signal) {
-const fromId = signal.from;
-
-if (!peers[fromId]) {
-console.log("Criando peer para receber sinal de:", fromId);
-// Determinar se quem enviou é professor
-const snap = await SALA_REF.child('participants/' + fromId).once('value');
-const data = snap.val() || {};
-await iniciarConexao(fromId, data.isProfessor);
-// Aguardar um pouco para a conexão ser estabelecida
-await new Promise(r => setTimeout(r, 500));
-}
-
-const pc = peers[fromId];
-if (!pc) {
-console.error("Peer não encontrado para:", fromId);
-return;
-}
-
-if (signal.type === 'offer') {
-console.log('📥 Recebendo OFFER de:', fromId);
-try {
-if (pc.signalingState === 'stable') {
-await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-const answer = await pc.createAnswer();
-await pc.setLocalDescription(answer);
-console.log('📤 Enviando ANSWER para:', fromId);
-enviarSinal(fromId, { type: 'answer', sdp: pc.localDescription });
-} else if (pc.signalingState === 'have-local-offer') {
-// Rollback e aceitar a oferta remota
-console.log('🔄 Rollback e aceitando offer remota');
-await pc.setLocalDescription({type:'rollback'});
-await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-const answer = await pc.createAnswer();
-await pc.setLocalDescription(answer);
-enviarSinal(fromId, { type: 'answer', sdp: pc.localDescription });
-} else {
-console.log('⏳ Ignorando offer, estado:', pc.signalingState);
-}
-} catch (err) {
-console.error('❌ Erro ao processar offer:', err);
-}
-} 
-else if (signal.type === 'answer') {
-console.log('📥 Recebendo ANSWER de:', fromId);
-try {
-if (pc.signalingState === 'have-local-offer') {
-await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-console.log('✅ ANSWER aplicada com sucesso para:', fromId);
-logDebug('✅ Conectado com ' + fromId.slice(0,4), 'ok');
-} else {
-console.log('⏳ Ignorando answer, estado:', pc.signalingState);
-}
-} catch (err) {
-console.error('❌ Erro ao processar answer:', err);
-}
-}
-else if (signal.type === 'ice') {
-console.log('📥 Recebendo ICE de:', fromId);
-try {
-if (pc.remoteDescription && signal.candidate && signal.candidate.candidate) {
-const iceInit = {
-  candidate: signal.candidate.candidate,
-  sdpMid: signal.candidate.sdpMid || 0,
-  sdpMLineIndex: signal.candidate.sdpMLineIndex !== null ? signal.candidate.sdpMLineIndex : 0,
-  usernameFragment: signal.candidate.usernameFragment
-};
-await pc.addIceCandidate(new RTCIceCandidate(iceInit));
-console.log('✅ ICE candidate adicionado');
-} else {
-console.log('⏳ ICE candidate guardado (sem remoteDescription ainda)');
-}
-} catch (e) {
-console.error('❌ Erro ao adicionar ICE:', e.message);
-}
-}
-}
-
-function enviarSinal(peerId, data) {
-data.from = minhaId;
-data.timestamp = Date.now();
-SALA_REF.child('signals/' + peerId).push(data);
-console.log('📤 Sinal enviado:', data.type, 'para', peerId);
-}
-
-// ========== LISTA DE PARTICIPANTES ==========
+// ==================== LISTA DE PARTICIPANTES ====================
 function atualizarListaParticipantes() {
-SALA_REF.child('participants').once('value', (snap) => {
-const listEl = document.getElementById('participants-list');
-const listMobile = document.getElementById('participants-list-mobile');
-let html = '';
+  rtcManager.participantsRef.once('value', (snapshot) => {
+    const listEl = document.getElementById('participants-list');
+    const listMobile = document.getElementById('participants-list-mobile');
+    let html = '';
 
-snap.forEach((child) => {
-const data = child.val();
-const isMe = child.key === minhaId;
-const mao = data.maoLevantada ? ' ✋' : '';
-const prof = data.isProfessor ? ' 👨‍🏫' : '';
-const me = isMe ? ' (Tu)' : '';
-html += `<div class="participant-item" style="justify-content:space-between;">
-<div style="display:flex; align-items:center; gap:8px;">
-  <span>${data.isProfessor ? '👨‍🏫' : '👤'}</span>
-  <span class="text-sm ${data.isProfessor ? 'text-emerald-400 font-bold' : ''}">${data.nome}${prof}${me}${mao}</span>
-</div>
-${(souProfessor && !data.isProfessor && !isMe) ? `<button onclick="removerParticipante('${child.key}', '${data.nome}')" style="background:#ef4444; color:white; border:none; border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer;">🚫 Remover</button>` : ''}
-</div>`;
-});
+    snapshot.forEach((child) => {
+      const data = child.val();
+      const isMe = child.key === minhaId;
+      const mao = data.maoLevantada ? ' ✋' : '';
+      const prof = data.isProfessor ? ' 👨‍🏫' : '';
+      const me = isMe ? ' (Tu)' : '';
 
-if (listEl) listEl.innerHTML = html;
-if (listMobile) listMobile.innerHTML = html;
-});
+      html += `<div class="participant-item" style="justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span>${data.isProfessor ? '👨‍🏫' : '👤'}</span>
+          <span class="text-sm ${data.isProfessor ? 'text-emerald-400 font-bold' : ''}">${data.nome}${prof}${me}${mao}</span>
+        </div>
+        ${(souProfessor && !data.isProfessor && !isMe) ? `<button onclick="removerParticipante('${child.key}', '${data.nome}')" style="background:#ef4444; color:white; border:none; border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer;">🚫 Remover</button>` : ''}
+      </div>`;
+    });
+
+    if (listEl) listEl.innerHTML = html;
+    if (listMobile) listMobile.innerHTML = html;
+  });
 }
 
 function atualizarContador() {
-SALA_REF.child('participants').once('value', (snap) => {
-document.getElementById('participant-count').textContent = '👥 ' + snap.numChildren();
-});
+  rtcManager.participantsRef.once('value', (snapshot) => {
+    document.getElementById('participant-count').textContent = '👥 ' + snapshot.numChildren();
+  });
 }
 
-// ========== CONTROLES ==========
+// ==================== CONTROLES DE MÍDIA ====================
 function toggleMic() {
-if (!localStream) return;
-micOn = !micOn;
-localStream.getAudioTracks().forEach(t => t.enabled = micOn);
-updateMicButton();
-SALA_REF.child('participants/' + minhaId).update({ micOn: micOn });
+  if (!localStream) return;
+  micOn = !micOn;
+  localStream.getAudioTracks().forEach(t => t.enabled = micOn);
+  updateMicButton();
+
+  if (rtcManager.participantsRef) {
+    rtcManager.participantsRef.child(minhaId).update({ micOn: micOn });
+  }
+
+  // Notificar peers sobre mudança de estado
+  rtcManager.peers.forEach((wrapper) => {
+    if (wrapper.pc && wrapper.pc.connectionState === 'connected') {
+      // A mudança de track.enabled não requer renegociação
+    }
+  });
 }
 
 function updateMicButton() {
-const btn = document.getElementById('btn-mic');
-const icon = document.getElementById('icon-mic');
-if (micOn) { btn.className = 'btn-control btn-on'; icon.textContent = '🎤'; }
-else { btn.className = 'btn-control btn-off'; icon.textContent = '🔇'; }
+  const btn = document.getElementById('btn-mic');
+  const icon = document.getElementById('icon-mic');
+  if (micOn) { 
+    btn.className = 'btn-control btn-on'; 
+    icon.textContent = '🎤'; 
+  } else { 
+    btn.className = 'btn-control btn-off'; 
+    icon.textContent = '🔇'; 
+  }
 }
 
 function toggleCam() {
-if (!localStream) return;
-camOn = !camOn;
-localStream.getVideoTracks().forEach(t => t.enabled = camOn);
-updateCamButton();
-SALA_REF.child('participants/' + minhaId).update({ camOn: camOn });
+  if (!localStream) return;
+  camOn = !camOn;
+  localStream.getVideoTracks().forEach(t => {
+    t.enabled = camOn;
+  });
+  updateCamButton();
+
+  if (rtcManager.participantsRef) {
+    rtcManager.participantsRef.child(minhaId).update({ camOn: camOn });
+  }
+
+  // Se desligou câmara, substituir track ou enviar black frame
+  if (!camOn) {
+    // Criar canvas preto como substituto
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 0, 640, 480);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Câmara desligada', 320, 240);
+
+    const stream = canvas.captureStream();
+    const newTrack = stream.getVideoTracks()[0];
+
+    rtcManager.peers.forEach((wrapper) => {
+      if (wrapper.pc) {
+        const sender = wrapper.pc.getSenders().find(s => s.track && s.track.kind === 'video');
+        if (sender) {
+          sender.replaceTrack(newTrack).catch(err => console.error('Erro replaceTrack:', err));
+        }
+      }
+    });
+  } else {
+    // Voltar a ligar câmara original
+    const originalTrack = localStream.getVideoTracks()[0];
+    if (originalTrack) {
+      rtcManager.peers.forEach((wrapper) => {
+        if (wrapper.pc) {
+          const sender = wrapper.pc.getSenders().find(s => s.track && s.track.kind === 'video');
+          if (sender) {
+            sender.replaceTrack(originalTrack).catch(err => console.error('Erro replaceTrack:', err));
+          }
+        }
+      });
+    }
+  }
 }
 
 function updateCamButton() {
-const btn = document.getElementById('btn-cam');
-const icon = document.getElementById('icon-cam');
-if (camOn) { btn.className = 'btn-control btn-on'; icon.textContent = '🎥'; }
-else { btn.className = 'btn-control btn-off'; icon.textContent = '📷'; }
+  const btn = document.getElementById('btn-cam');
+  const icon = document.getElementById('icon-cam');
+  if (camOn) { 
+    btn.className = 'btn-control btn-on'; 
+    icon.textContent = '🎥'; 
+  } else { 
+    btn.className = 'btn-control btn-off'; 
+    icon.textContent = '📷'; 
+  }
 }
 
 function levantarMao() {
-if (souProfessor) return;
-maoLevantada = !maoLevantada;
-const btn = document.getElementById('btn-hand');
-const icon = document.getElementById('icon-hand');
-if (maoLevantada) {
-btn.classList.add('pulse');
-icon.textContent = '✋';
-SALA_REF.child('participants/' + minhaId).update({ maoLevantada: true });
-showModal('modal-mao');
-} else {
-btn.classList.remove('pulse');
-icon.textContent = '🙋';
-SALA_REF.child('participants/' + minhaId).update({ maoLevantada: false });
-}
+  if (souProfessor) return;
+  maoLevantada = !maoLevantada;
+  const btn = document.getElementById('btn-hand');
+  const icon = document.getElementById('icon-hand');
+
+  if (maoLevantada) {
+    btn.classList.add('pulse');
+    icon.textContent = '✋';
+    rtcManager.participantsRef.child(minhaId).update({ maoLevantada: true });
+    showModal('modal-mao');
+  } else {
+    btn.classList.remove('pulse');
+    icon.textContent = '🙋';
+    rtcManager.participantsRef.child(minhaId).update({ maoLevantada: false });
+  }
 }
 
-// ========== GRAVAÇÃO ==========
+// ==================== GRAVAÇÃO ====================
 function toggleRecording() {
-if (!isRecording) { iniciarGravacao(); } else { pararGravacao(); }
+  if (!isRecording) { 
+    iniciarGravacao(); 
+  } else { 
+    pararGravacao(); 
+  }
 }
 
 function iniciarGravacao() {
-if (!localStream) { alert("Precisas de câmara/microfone para gravar."); return; }
-recordedChunks = [];
-const combinedStream = new MediaStream();
-localStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
-localStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+  if (!localStream) { 
+    alert("Precisas de câmara/microfone para gravar."); 
+    return; 
+  }
 
-try { mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus' }); }
-catch (e) { try { mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus' }); }
-catch (e2) { mediaRecorder = new MediaRecorder(combinedStream); } }
+  recordedChunks = [];
+  const combinedStream = new MediaStream();
+  localStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
+  localStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
 
-mediaRecorder.ondataavailable = (event) => { if (event.data && event.data.size > 0) recordedChunks.push(event.data); };
-mediaRecorder.onstop = () => {
-const blob = new Blob(recordedChunks, { type: 'video/webm' });
-const url = URL.createObjectURL(blob);
-document.getElementById('link-download').href = url;
-document.getElementById('link-download').download = 'MadrassaIM_Aula_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.webm';
-showModal('modal-gravacao');
-};
-mediaRecorder.start(1000);
-isRecording = true;
-const btn = document.getElementById('btn-record');
-const icon = document.getElementById('icon-record');
-btn.classList.add('recording');
-icon.textContent = '⏹️';
-document.getElementById('recording-indicator').classList.remove('hidden');
+  let options = {};
+  if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+    options = { mimeType: 'video/webm;codecs=vp9,opus' };
+  } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+    options = { mimeType: 'video/webm;codecs=vp8,opus' };
+  } else if (MediaRecorder.isTypeSupported('video/webm')) {
+    options = { mimeType: 'video/webm' };
+  }
+
+  try {
+    mediaRecorder = new MediaRecorder(combinedStream, options);
+  } catch (e) {
+    alert("Gravação não suportada neste navegador.");
+    return;
+  }
+
+  mediaRecorder.ondataavailable = (event) => { 
+    if (event.data && event.data.size > 0) recordedChunks.push(event.data); 
+  };
+
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    document.getElementById('link-download').href = url;
+    document.getElementById('link-download').download = 'MadrassaIM_Aula_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.webm';
+    showModal('modal-gravacao');
+  };
+
+  mediaRecorder.start(1000);
+  isRecording = true;
+  const btn = document.getElementById('btn-record');
+  const icon = document.getElementById('icon-record');
+  btn.classList.add('recording');
+  icon.textContent = '⏹️';
+  document.getElementById('recording-indicator').classList.remove('hidden');
 }
 
 function pararGravacao() {
-if (mediaRecorder && isRecording) {
-mediaRecorder.stop();
-isRecording = false;
-const btn = document.getElementById('btn-record');
-const icon = document.getElementById('icon-record');
-btn.classList.remove('recording');
-btn.classList.add('saved');
-icon.textContent = '✅';
-document.getElementById('recording-indicator').classList.add('hidden');
-setTimeout(() => { btn.classList.remove('saved'); icon.textContent = '⏺️'; }, 3000);
-}
+  if (mediaRecorder && isRecording) {
+    mediaRecorder.stop();
+    isRecording = false;
+    const btn = document.getElementById('btn-record');
+    const icon = document.getElementById('icon-record');
+    btn.classList.remove('recording');
+    btn.classList.add('saved');
+    icon.textContent = '✅';
+    document.getElementById('recording-indicator').classList.add('hidden');
+    setTimeout(() => { 
+      btn.classList.remove('saved'); 
+      icon.textContent = '⏺️'; 
+    }, 3000);
+  }
 }
 
-// ========== CHAT E PARTICIPANTES ==========
+// ==================== CHAT E PARTICIPANTES ====================
 function toggleChat() {
-const overlay = document.getElementById('chat-overlay');
-const panel = document.getElementById('side-panel');
-if (window.innerWidth < 768) { overlay.classList.toggle('hidden'); overlay.classList.toggle('flex'); }
-else { 
-// Em desktop, alternar entre chat e participantes no painel lateral
-if (panel.classList.contains('hidden')) {
-panel.classList.remove('hidden');
-panel.classList.add('flex');
-} else {
-panel.classList.toggle('hidden');
-panel.classList.toggle('flex');
-}
-}
+  const overlay = document.getElementById('chat-overlay');
+  const panel = document.getElementById('side-panel');
+  if (window.innerWidth < 768) { 
+    overlay.classList.toggle('hidden'); 
+    overlay.classList.toggle('flex'); 
+  } else { 
+    if (panel.classList.contains('hidden')) {
+      panel.classList.remove('hidden');
+      panel.classList.add('flex');
+    } else {
+      panel.classList.toggle('hidden');
+      panel.classList.toggle('flex');
+    }
+  }
 }
 
 function toggleParticipants() {
-const overlay = document.getElementById('participants-overlay');
-overlay.classList.toggle('hidden');
-overlay.classList.toggle('flex');
+  const overlay = document.getElementById('participants-overlay');
+  overlay.classList.toggle('hidden');
+  overlay.classList.toggle('flex');
 }
 
 function enviarChat() {
-const input = document.getElementById('chat-input');
-const texto = input.value.trim();
-if (!texto) return;
-SALA_REF.child('chat').push({ id: minhaId, nome: meuNome, texto: texto, time: Date.now() });
-input.value = '';
+  const input = document.getElementById('chat-input');
+  const texto = input.value.trim();
+  if (!texto) return;
+  rtcManager.chatRef.push({ id: minhaId, nome: meuNome, texto: texto, time: Date.now() });
+  input.value = '';
 }
 
 function enviarChatMobile() {
-const input = document.getElementById('chat-input-mobile');
-const texto = input.value.trim();
-if (!texto) return;
-SALA_REF.child('chat').push({ id: minhaId, nome: meuNome, texto: texto, time: Date.now() });
-input.value = '';
+  const input = document.getElementById('chat-input-mobile');
+  const texto = input.value.trim();
+  if (!texto) return;
+  rtcManager.chatRef.push({ id: minhaId, nome: meuNome, texto: texto, time: Date.now() });
+  input.value = '';
 }
 
 function adicionarChatMsg(nome, texto, isMe) {
-const msgDiv = document.createElement('div');
-msgDiv.className = 'chat-msg ' + (isMe ? 'chat-me' : 'chat-other');
-msgDiv.innerHTML = `<strong class="text-xs opacity-70">${nome}</strong><br>${texto}`;
-document.getElementById('chat-messages').appendChild(msgDiv);
-document.getElementById('chat-messages-mobile').appendChild(msgDiv.cloneNode(true));
-document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
-document.getElementById('chat-messages-mobile').scrollTop = document.getElementById('chat-messages-mobile').scrollHeight;
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'chat-msg ' + (isMe ? 'chat-me' : 'chat-other');
+  msgDiv.innerHTML = `<strong class="text-xs opacity-70">${nome}</strong><br>${texto}`;
+
+  const desktopChat = document.getElementById('chat-messages');
+  const mobileChat = document.getElementById('chat-messages-mobile');
+
+  if (desktopChat) {
+    desktopChat.appendChild(msgDiv.cloneNode(true));
+    desktopChat.scrollTop = desktopChat.scrollHeight;
+  }
+  if (mobileChat) {
+    mobileChat.appendChild(msgDiv.cloneNode(true));
+    mobileChat.scrollTop = mobileChat.scrollHeight;
+  }
 }
 
-// ========== SAIR ==========
+// ==================== REMOVER PARTICIPANTE (PROFESSOR) ====================
 function removerParticipante(peerId, nome) {
   if (!souProfessor) return;
   if (!confirm('Remover ' + nome + ' da aula?')) return;
+
   console.log('🚫 Professor removeu:', nome, peerId);
-  SALA_REF.child('participants/' + peerId).remove();
-  SALA_REF.child('signals/' + peerId).remove();
-  SALA_REF.child('kicks/' + peerId).set({ by: meuNome, time: Date.now() });
-  if (peers[peerId]) { peers[peerId].close(); delete peers[peerId]; }
+
+  const salaRef = db.ref('salas/' + NOME_SALA);
+  salaRef.child('participants/' + peerId).remove();
+  salaRef.child('signals/' + peerId).remove();
+  salaRef.child('kicks/' + peerId).set({ by: meuNome, time: Date.now() });
+
+  const wrapper = rtcManager.peers.get(peerId);
+  if (wrapper) {
+    wrapper.close();
+  }
+
   removerVideoAluno(peerId);
   atualizarListaParticipantes();
   atualizarContador();
-  logDebug('🚫 ' + nome + ' removido', 'aviso');
 }
 
+// ==================== SAIR DA SALA ====================
 function sairDaSala() {
-if (isRecording) pararGravacao();
-if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  console.log('🚪 Saindo da sala...');
 
-// Fechar todas as conexões
-Object.values(peers).forEach(pc => pc.close());
-peers = {};
+  // Parar gravação
+  if (isRecording) pararGravacao();
 
-SALA_REF.child('participants/' + minhaId).remove();
-SALA_REF.child('signals/' + minhaId).remove();
-SALA_REF.child('kicks/' + minhaId).remove();
-if (souProfessor) { SALA_REF.child('professor').remove(); }
-SALA_REF.off();
+  // Parar stream local
+  if (localStream) { 
+    localStream.getTracks().forEach(t => t.stop()); 
+    localStream = null; 
+  }
 
-// Reset UI
-document.getElementById('alunos-grid').innerHTML = '';
-document.getElementById('participants-list').innerHTML = '';
-document.getElementById('participants-list-mobile').innerHTML = '';
-document.getElementById('connection-spinner').classList.remove('hidden');
-document.getElementById('status-text').textContent = "À espera do professor...";
-document.getElementById('profVideo').srcObject = null;
-document.getElementById('chat-messages').innerHTML = '';
-document.getElementById('chat-messages-mobile').innerHTML = '';
-document.getElementById('page-sala').classList.add('hidden');
-document.getElementById('page-home').classList.remove('hidden');
-showPage('home');
-micOn = true; camOn = true; maoLevantada = false;
-updateMicButton(); updateCamButton();
-const btn = document.getElementById('btn-record');
-btn.classList.remove('recording', 'saved');
-document.getElementById('icon-record').textContent = '⏺️';
-isRecording = false;
+  // Parar heartbeat e cleanup
+  if (rtcManager.heartbeatInterval) {
+    clearInterval(rtcManager.heartbeatInterval);
+    rtcManager.heartbeatInterval = null;
+  }
+  if (rtcManager.cleanupInterval) {
+    clearInterval(rtcManager.cleanupInterval);
+    rtcManager.cleanupInterval = null;
+  }
+
+  // Cancelar timeouts de reconexão
+  rtcManager.reconnectTimeouts.forEach((timeoutId) => {
+    clearTimeout(timeoutId);
+  });
+  rtcManager.reconnectTimeouts.clear();
+
+  // Fechar todas as conexões WebRTC
+  rtcManager.peers.forEach((wrapper) => {
+    wrapper.close(false);
+  });
+  rtcManager.peers.clear();
+
+  // Remover todos os listeners Firebase
+  if (rtcManager.signalsRef) {
+    rtcManager.signalsRef.off();
+    rtcManager.signalsRef = null;
+  }
+  if (rtcManager.participantsRef) {
+    rtcManager.participantsRef.off();
+    rtcManager.participantsRef = null;
+  }
+  if (rtcManager.chatRef) {
+    rtcManager.chatRef.off();
+    rtcManager.chatRef = null;
+  }
+  if (rtcManager.kicksRef) {
+    rtcManager.kicksRef.off();
+    rtcManager.kicksRef = null;
+  }
+
+  // Remover dados da sala
+  const salaRef = db.ref('salas/' + NOME_SALA);
+  salaRef.child('participants/' + minhaId).remove();
+  salaRef.child('signals/' + minhaId).remove();
+  salaRef.child('kicks/' + minhaId).remove();
+
+  if (souProfessor) {
+    salaRef.child('professor').remove();
+  }
+
+  // Reset UI
+  document.getElementById('alunos-grid').innerHTML = '';
+  document.getElementById('participants-list').innerHTML = '';
+  document.getElementById('participants-list-mobile').innerHTML = '';
+  document.getElementById('connection-spinner').classList.remove('hidden');
+  document.getElementById('status-text').textContent = "À espera do professor...";
+  document.getElementById('profVideo').srcObject = null;
+  document.getElementById('chat-messages').innerHTML = '';
+  document.getElementById('chat-messages-mobile').innerHTML = '';
+  document.getElementById('page-sala').classList.add('hidden');
+  document.getElementById('page-home').classList.remove('hidden');
+
+  showPage('home');
+
+  // Reset estado
+  micOn = true; 
+  camOn = true; 
+  maoLevantada = false;
+  souProfessor = false;
+  meuNome = "";
+  updateMicButton(); 
+  updateCamButton();
+
+  const btn = document.getElementById('btn-record');
+  btn.classList.remove('recording', 'saved');
+  document.getElementById('icon-record').textContent = '⏺️';
+  isRecording = false;
 }
 
+// ==================== FECHAR MODAL AO CLICAR FORA ====================
 window.onclick = function(e) {
-if (e.target.classList.contains('fixed')) { e.target.classList.add('hidden'); e.target.classList.remove('flex'); }
+  if (e.target.classList.contains('fixed')) { 
+    e.target.classList.add('hidden'); 
+    e.target.classList.remove('flex'); 
+  }
 };
 
-// ========== DEBUG VISUAL ==========
+// ==================== DEBUG VISUAL ====================
 let debugAtivo = false;
+
 function toggleDebug() {
   const panel = document.getElementById('debug-panel');
   debugAtivo = !debugAtivo;
@@ -997,44 +1414,54 @@ function toggleDebug() {
 
 function logDebug(msg, tipo) {
   const logs = document.getElementById('debug-logs');
+  if (!logs) return;
+
   const div = document.createElement('div');
   const hora = new Date().toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   let cor = '#10b981';
   if (tipo === 'erro') cor = '#ef4444';
   if (tipo === 'aviso') cor = '#f59e0b';
   if (tipo === 'ok') cor = '#3b82f6';
+
   div.style.color = cor;
   div.innerHTML = `<span style="opacity:0.6;">[${hora}]</span> ${msg}`;
   logs.appendChild(div);
   logs.scrollTop = logs.scrollHeight;
-  // Manter só últimos 50 logs
+
   while (logs.children.length > 50) logs.removeChild(logs.firstChild);
 }
 
-// Sobrescrever console.log para também mostrar no painel
+// Sobrescrever console.log para debug visual
 const logOriginal = console.log;
 console.log = function(...args) {
   logOriginal.apply(console, args);
   logDebug(args.join(' '));
 };
+
 const erroOriginal = console.error;
 console.error = function(...args) {
   erroOriginal.apply(console, args);
   logDebug('❌ ' + args.join(' '), 'erro');
 };
 
-// Log de estado da conexão
+// Log de estado periódico
 setInterval(() => {
   if (!debugAtivo) return;
-  const numPeers = Object.keys(peers).length;
+  const numPeers = rtcManager.peers.size;
   const numVideos = document.getElementById('alunos-grid').children.length;
-  const estados = Object.entries(peers).map(([id, pc]) => {
-    const estado = pc.connectionState?.slice(0,3) || '?';
-    const sinal = pc.signalingState?.slice(0,3) || '?';
-    return `${id.slice(0,4)}:${estado}/${sinal}`;
-  }).join(' ');
-  logDebug(`🔗 Peers:${numPeers} Vídeos:${numVideos} | ${estados}`, 'ok');
-}, 3000);
+  const estados = [];
+
+  rtcManager.peers.forEach((wrapper, id) => {
+    if (wrapper.pc) {
+      const estado = wrapper.pc.connectionState?.slice(0,3) || '?';
+      const sinal = wrapper.pc.signalingState?.slice(0,3) || '?';
+      const ice = wrapper.pc.iceConnectionState?.slice(0,3) || '?';
+      estados.push(`${id.slice(0,4)}:${estado}/${sinal}/${ice}`);
+    }
+  });
+
+  logDebug(`🔗 Peers:${numPeers} Vídeos:${numVideos} | ${estados.join(' ')}`, 'ok');
+}, 5000);
 </script>
 
 <!-- PAINEL DE DEBUG VISUAL -->
